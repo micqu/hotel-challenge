@@ -3,3 +3,6 @@ torchvision
 numpy
 pandas
 tqdm
+scikit-image
+matplotlib
+sklearn
