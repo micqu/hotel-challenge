@@ -1,11 +1,8 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 class Net(nn.Module):
-    """
-    Network
-    """
-
     def __init__(self, input_dim, hidden_dims, output_dim, dropout_p=0.0):
         super(Net, self).__init__()
   
@@ -41,7 +38,7 @@ class Net(nn.Module):
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
         
-        x = x.view(-1, self.input_dim)
+        x = torch.flatten(x, 1)
 
         for i, layer in enumerate(self.layers):
             x = layer(x)
