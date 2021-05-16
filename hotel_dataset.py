@@ -39,11 +39,3 @@ class HotelImagesDataset(Dataset):
             X = self.transform(pil_image)
 
         return X, y
-
-    # def class_to_index(self, class_name):
-    #     """Returns the index of a given class."""
-    #     return self.classes.index(class_name)
-    
-    # def index_to_class(self, class_index):
-    #     """Returns the class of a given index."""
-    #     return self.classes[class_index] 

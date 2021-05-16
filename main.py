@@ -16,9 +16,10 @@ from PIL import Image
 import pandas as pd
 import time
 import copy
+import ml_metrics
 
 IMAGE_SIZE = 224
-BATCH_SIZE = 4
+BATCH_SIZE = 1
 NUM_EPOCHS = 15
 FEATURE_EXTRACT = True
 
@@ -69,8 +70,6 @@ def main():
     dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=BATCH_SIZE,
                                                   shuffle=True, num_workers=4)
                    for x in ['train', 'valid']}
-    dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'valid']}
-    class_names = image_datasets['train'].classes
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(device)
         
@@ -82,131 +81,131 @@ def main():
     
     # Gather the parameters to be optimized/updated in this run.
     params_to_update = model_ft.parameters()
-    print("Params to learn:")
     if FEATURE_EXTRACT:
         params_to_update = []
         for name, param in model_ft.named_parameters():
             if param.requires_grad == True:
                 params_to_update.append(param)
-                print("\t",name)
-    else:
-        for name, param in model_ft.named_parameters():
-            if param.requires_grad == True:
-                print("\t",name)
-    
+                
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(params_to_update, lr=0.001, momentum=0.9)
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.01,
-                                                    steps_per_epoch=len(dataloaders['train']),
-                                                    epochs=10)
-    model_ft, hist = train_model(model_ft, dataloaders, criterion, optimizer,
-                                 scheduler, device, label_encoder, num_epochs=NUM_EPOCHS)
+    optimizer = torch.optim.SGD(params_to_update, lr=0.01, momentum=0.9)
+    #scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.01,
+    #                                               steps_per_epoch=len(dataloaders['train']),
+    #                                                epochs=10)
+    model_ft, hist_loss, hist_map = train_model(model_ft, dataloaders, criterion, optimizer,
+                                                None, device, label_encoder, num_epochs=NUM_EPOCHS)
+    
+    ohist_loss = [h.cpu().numpy() for h in hist_loss]
+    ohist_map = [h.cpu().numpy() for h in hist_map]
+    
+    plt.title("Validation Accuracy vs. Number of Training Epochs")
+    plt.xlabel("Training Epochs")
+    plt.ylabel("Validation Accuracy")
+    plt.plot(range(1, NUM_EPOCHS+1), ohist_loss, label="loss")
+    plt.plot(range(1, NUM_EPOCHS+1), ohist_map, label="map")
+    plt.ylim((0,1.))
+    plt.xticks(np.arange(1, NUM_EPOCHS+1, 1.0))
+    plt.legend()
+    plt.show()
     
 def initialize_resnet(num_classes, feature_extract, use_pretrained=True):
-    # Initialize these variables which will be set in this if statement. Each of these
-    # variables is model specific.
-    
     model_ft = torchvision.models.resnet18(pretrained=use_pretrained)
     set_parameter_requires_grad(model_ft, feature_extract)
     num_ftrs = model_ft.fc.in_features
     model_ft.fc = nn.Linear(num_ftrs, num_classes)
     input_size = IMAGE_SIZE
-    
     return model_ft, input_size
 
 def train_model(model, dataloaders, criterion, optimizer,
-                scheduler, device, label_encoder, num_epochs=10):
-    since = time.time()
-    valid_acc_history = []
+                scheduler, device, label_encoder, num_epochs=10):    
+    valid_loss_history = []
+    valid_map_history = []
     
     best_model_wts = copy.deepcopy(model.state_dict())
-    best_acc = 0.0
+    best_valid_map = 0.0
 
-    for epoch in range(num_epochs):
-        print('Epoch {}/{}'.format(epoch, num_epochs - 1))
-        print('-' * 10)
-        
-        # Each epoch has a training and validation phase
-        for phase in ['train', 'valid']:
-            if phase == 'train':
-                model.train()  # Set model to training mode
-            else:
-                model.eval()   # Set model to evaluate mode    
+    start_time = time.time()
+    num_steps = len(dataloaders['train'].dataset) // BATCH_SIZE
+    for epoch in range(1, NUM_EPOCHS + 1):
+        print(f"Epoch {epoch}/{NUM_EPOCHS}")
+        model.train()
+        train_loss = 0.0
+        train_map = 0.0
+        for step, (inputs, labels) in enumerate(dataloaders['train']):
+            inputs = inputs.to(device)
+            labels = labels.to(device)
             
-            running_loss = 0.0
-            running_corrects = 0.0
+            # zero the parameter gradients
+            optimizer.zero_grad()
 
-            # Iterate over data.
-            for inputs, labels in dataloaders[phase]:
-                inputs = inputs.to(device)
-                labels = labels.to(device)
+            # forward
+            with torch.enable_grad():
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+                loss.backward()
+                optimizer.step()
+            
+            train_loss += loss.item() * inputs.size(0)
+            train_map += calculate_map(outputs, labels)
+            
+            if step % num_steps == 0:
+                time_taken = time.time() - start_time
+                valid_loss = 0.0
+                valid_map = 0.0
+                model.eval()
+                
+                with torch.no_grad():
+                    for inputs, labels in dataloaders['valid']:
+                        inputs = inputs.to(device)
+                        labels = labels.to(device)
+                        
+                        outputs = model(inputs)
+                        loss = criterion(outputs, labels)
+                        valid_loss += loss.item() * inputs.size(0)
+                        valid_map += calculate_map(outputs, labels)
+                        
+                valid_loss /= len(dataloaders['valid'].dataset)
+                valid_map /= len(dataloaders['valid'].dataset)
+                
+                if valid_map > best_valid_map:
+                    best_valid_map = valid_map
+                    best_model_wts = copy.deepcopy(model.state_dict())
+                
+                valid_loss_history.append(valid_loss)
+                valid_map_history.append(valid_map)
 
-                # zero the parameter gradients
-                optimizer.zero_grad()
-
-                # forward
-                # track history if only in train
-                with torch.set_grad_enabled(phase == 'train'):
-                    outputs = model(inputs)
-                    loss = criterion(outputs, labels)
-                    
-                    # backward + optimize only if in training phase
-                    if phase == 'train':
-                        loss.backward()
-                        optimizer.step()
-                        scheduler.step()
-
-                # statistics
-                running_loss += loss.item() * inputs.size(0)
-                top_k = torch.topk(outputs, 5)
-                preds = top_k.indices.detach().squeeze().cpu().numpy()
-                for i, pred in enumerate(preds):
-                    pred_hotel_ids = label_encoder.inverse_transform(pred)
-                    truth = labels.cpu().numpy()[i]
-                    running_corrects += calculate_correctness(truth, pred_hotel_ids)
-
-            epoch_loss = running_loss / len(dataloaders[phase].dataset)
-            epoch_acc = running_corrects / len(dataloaders[phase].dataset)
-
-            print('{} Loss: {:.4f} Acc: {:.4f}'.format(phase, epoch_loss, epoch_acc))
-
-            # deep copy the model
-            if phase == 'valid' and epoch_acc > best_acc:
-                best_acc = epoch_acc
-                best_model_wts = copy.deepcopy(model.state_dict())
-            if phase == 'valid':
-                valid_acc_history.append(epoch_acc)
-
-        print()
-
-    time_elapsed = time.time() - since
-    print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
-    print('Best valid Acc: {:4f}'.format(best_acc))
-
-    # load best model weights
+        total_iteration = len(dataloaders['train'].dataset)
+        train_loss /= total_iteration
+        train_map /= total_iteration
+        mean_valid_loss = np.mean(valid_loss_history)
+        mean_valid_map = np.mean(valid_map_history)
+        print_status_bar(step * BATCH_SIZE,
+                         total_iteration,
+                         train_loss,
+                         train_map,
+                         mean_valid_loss,
+                         mean_valid_map,
+                         time_taken)
+        print('Train loss: {:.4f}, map: {:.4f}'.format(train_loss, train_map))
+        
     model.load_state_dict(best_model_wts)
-    return model, valid_acc_history
-      
+    return model, valid_loss_history, valid_map_history
+
+def print_status_bar(iteration, total, train_loss, train_map,
+                     mean_valid_loss, mean_valid_map, time_taken):
+    pass
+    
+    
 def set_parameter_requires_grad(model, feature_extracting):
-    # Helper function to set requires grad to False
-    # if we are feature extracting
     if feature_extracting:
         for param in model.parameters():
             param.requires_grad = False
       
-def calculate_correctness(truth, pred):
-    # Helper function to calculate corretness
-    if pred[0] == truth:
-        return 1.0
-    elif pred[1] == truth:
-        return 0.8
-    elif pred[2] == truth:
-        return 0.6
-    elif pred[3] == truth:
-        return 0.4
-    elif pred[4] == truth:
-        return 0.2
-    return 0
-
+def calculate_map(outputs, labels):
+    top_k = torch.topk(outputs, 5)
+    preds = top_k.indices.detach().cpu().numpy()
+    corrects = labels.detach().cpu().numpy()
+    return ml_metrics.mapk([[x] for x in corrects], preds, k=5)
+                
 if __name__ == "__main__":
     main()
