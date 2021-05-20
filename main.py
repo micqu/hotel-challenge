@@ -7,7 +7,6 @@ from torch import nn
 import torch.optim as optim
 import torch
 import torchvision
-import model
 import os
 from torchvision import transforms
 from skimage import io, transform
@@ -17,11 +16,9 @@ import pandas as pd
 import time
 import copy
 import ml_metrics
+import wandb
 
 IMAGE_SIZE = 224
-BATCH_SIZE = 1
-NUM_EPOCHS = 15
-FEATURE_EXTRACT = True
 
 def encode_labels(df):
     le = LabelEncoder()
@@ -30,23 +27,7 @@ def encode_labels(df):
     df = df.drop(['hotel_id'], axis=1)
     return df, le
 
-def main():    
-    df = pd.read_csv('data/train.csv')
-    df = df.groupby('hotel_id').filter(lambda x : len(x)>1) #remove hotel ids with only 1 sample
-    df, label_encoder = encode_labels(df)
-    
-    y = df.label
-    X = df.drop(['label', 'timestamp'], axis=1)
-    X_train, X_valid, y_train, y_valid = train_test_split(X, y, train_size=0.8, stratify=y)
-    
-    df_train = X_train.merge(y_train, left_index=True, right_index=True)
-    df_valid = X_valid.merge(y_valid, left_index=True, right_index=True)
-    
-    df_train = df_train.iloc[:1000,:] # only first 1000 rows
-    df_valid = df_valid.iloc[:1000,:]
-    
-    data_dir = 'data/train_images'
-    data_files = {'train': df_train, 'valid': df_valid}
+def build_dataset(batch_size):
     data_transforms = {
         'train': transforms.Compose([
             transforms.RandomResizedCrop(IMAGE_SIZE),
@@ -62,75 +43,140 @@ def main():
         ]),
     }
     
+    df = pd.read_csv('data/train.csv')
+    df = df.groupby('hotel_id').filter(lambda x : len(x)>1) #remove hotel ids with only 1 sample
+    df, label_encoder = encode_labels(df)
+    num_classes = len(df['label'].value_counts())
+        
+    y = df.label
+    X = df.drop(['label', 'timestamp'], axis=1)
+    X_train, X_valid, y_train, y_valid = train_test_split(X, y, train_size=0.8, stratify=y)
+    
+    df_train = X_train.merge(y_train, left_index=True, right_index=True)
+    df_valid = X_valid.merge(y_valid, left_index=True, right_index=True)
+    
+    df_train = df_train.iloc[:1000,:] # only first 1000 rows
+    df_valid = df_valid.iloc[:1000,:]
+    
+    data_dir = 'data/train_images'
+    data_files = {'train': df_train, 'valid': df_valid}
     image_datasets = {x: HotelImagesDataset(data_files[x],
                                             root_dir=data_dir,
                                             transform=data_transforms[x])
                       for x in ['train', 'valid']}
-
-    dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=BATCH_SIZE,
+    
+    dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=batch_size,
                                                   shuffle=True, num_workers=4)
                    for x in ['train', 'valid']}
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print(device)
-        
-    num_classes = len(df['label'].value_counts())
-    model_ft, input_size = initialize_resnet(num_classes, FEATURE_EXTRACT, use_pretrained=True)
     
-    # Send model to GPU
-    model_ft = model_ft.to(device)
+    return dataloaders, label_encoder, num_classes
+
+def main():    
+    sweep_config = {
+        'method': 'bayes', #grid, random, bayes
+        'metric': {
+        'name': 'loss',
+        'goal': 'minimize'
+        },
+        'early_terminate': {
+            'type': 'hyperband',
+            'min_iter': 3,
+        },
+        'parameters': {
+            'epochs': {
+                'values': [10, 20, 50, 100]
+            },
+            'batch_size': {
+                'values': [256, 128, 64, 32]
+            },
+            'learning_rate': {
+                'values': [1e-2, 1e-3, 1e-4, 3e-4, 3e-5, 1e-5]
+            },
+            'optimizer': {
+                'values': ['adam', 'rmsprop', 'sgd']
+            },
+            'use_feature_extract': {
+                'values': [True, False]
+            },
+            'resnet_type': {
+                'values': ['resnet18', 'resnet34', 'resnet50']
+            }
+        }
+    }
+    sweep_id = wandb.sweep(sweep_config, project="hotel-challenge")
+    wandb.agent(sweep_id, train_model)
     
-    # Gather the parameters to be optimized/updated in this run.
-    params_to_update = model_ft.parameters()
-    if FEATURE_EXTRACT:
-        params_to_update = []
-        for name, param in model_ft.named_parameters():
-            if param.requires_grad == True:
-                params_to_update.append(param)
-                
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(params_to_update, lr=0.01, momentum=0.9)
-    #scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.01,
-    #                                               steps_per_epoch=len(dataloaders['train']),
-    #                                                epochs=10)
-    model_ft, hist_loss, hist_map = train_model(model_ft, dataloaders, criterion, optimizer,
-                                                None, device, label_encoder, num_epochs=NUM_EPOCHS)
-    
-    ohist_loss = [h.cpu().numpy() for h in hist_loss]
-    ohist_map = [h.cpu().numpy() for h in hist_map]
-    
-    plt.title("Validation Accuracy vs. Number of Training Epochs")
-    plt.xlabel("Training Epochs")
-    plt.ylabel("Validation Accuracy")
-    plt.plot(range(1, NUM_EPOCHS+1), ohist_loss, label="loss")
-    plt.plot(range(1, NUM_EPOCHS+1), ohist_map, label="map")
-    plt.ylim((0,1.))
-    plt.xticks(np.arange(1, NUM_EPOCHS+1, 1.0))
-    plt.legend()
-    plt.show()
-    
-def initialize_resnet(num_classes, feature_extract, use_pretrained=True):
-    model_ft = torchvision.models.resnet18(pretrained=use_pretrained)
+def initialize_resnet(num_classes, resnet_type,
+                      feature_extract, use_pretrained=True):
+    if resnet_type=='resnet18':
+        model_ft = torchvision.models.resnet18(pretrained=use_pretrained)
+    elif resnet_type=='resnet34':
+        model_ft = torchvision.models.resnet34(pretrained=use_pretrained)
+    elif resnet_type=='resnet50':
+        model_ft = torchvision.models.resnet50(pretrained=use_pretrained)     
     set_parameter_requires_grad(model_ft, feature_extract)
     num_ftrs = model_ft.fc.in_features
     model_ft.fc = nn.Linear(num_ftrs, num_classes)
-    input_size = IMAGE_SIZE
-    return model_ft, input_size
+    return model_ft
 
-def train_model(model, dataloaders, criterion, optimizer,
-                scheduler, device, label_encoder, num_epochs=10):    
+def train_model():
+    config_defaults = {
+        'epochs': 10,
+        'batch_size': 32,
+        'learning_rate': 1e-3,
+        'optimizer': 'adam',
+        'use_feature_extract': True,
+        'resnet_type': 'resnet18'
+    }
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Initialize a new wandb run
+    wandb.init(config=config_defaults)
+    
+    # Config is a variable that holds and saves hyperparameters and inputs
+    config = wandb.config
+    
+    # Build dataset
+    dataloaders, label_encoder, num_classes = build_dataset(config.batch_size)
+    
+    # Make resnet
+    model = initialize_resnet(num_classes,
+                              config.resnet_type,
+                              config.use_feature_extract)
+    model = model.to(device)
+    
+    # Gather the parameters to be optimized/updated in this run.
+    params_to_update = model.parameters()
+    if config.use_feature_extract:
+        params_to_update = []
+        for name, param in model.named_parameters():
+            if param.requires_grad == True:
+                params_to_update.append(param)
+    
+    # Define criterion + optimizer
+    criterion = nn.CrossEntropyLoss()
+    if config.optimizer=='sgd':    
+        optimizer = optim.SGD(params_to_update, lr=config.learning_rate)
+    elif config.optimizer=='rmsprop':
+        optimizer = optim.RMSprop(params_to_update, lr=config.learning_rate)
+    elif config.optimizer=='adam':
+        optimizer = optim.Adam(params_to_update, lr=config.learning_rate)
+    
+    # Define scheduler
+    scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer, max_lr=100, epochs=config.epochs,
+                                              steps_per_epoch=len(dataloaders['train']))
+    
     valid_loss_history = []
     valid_map_history = []
-    
-    best_model_wts = copy.deepcopy(model.state_dict())
-    best_valid_map = 0.0
 
+    # Run train loop
     start_time = time.time()
-    num_steps = len(dataloaders['train'].dataset) // BATCH_SIZE
-    for epoch in range(1, NUM_EPOCHS + 1):
-        print(f"Epoch {epoch}/{NUM_EPOCHS}")
+    num_steps = len(dataloaders['train'].dataset) // config.batch_size
+    for epoch in range(1, config.epochs + 1):
+        print(f"Epoch {epoch}/{config.epochs}")
         model.train()
-        train_loss = 0.0
-        train_map = 0.0
+        batch_loss = 0.0
+        batch_map = 0.0
         for step, (inputs, labels) in enumerate(dataloaders['train']):
             inputs = inputs.to(device)
             labels = labels.to(device)
@@ -144,9 +190,12 @@ def train_model(model, dataloaders, criterion, optimizer,
                 loss = criterion(outputs, labels)
                 loss.backward()
                 optimizer.step()
+                scheduler.step()
             
-            train_loss += loss.item() * inputs.size(0)
-            train_map += calculate_map(outputs, labels)
+            batch_loss += loss.item() * inputs.size(0)
+            batch_map += calculate_map(outputs, labels)
+            wandb.log({"batch loss":batch_loss})
+            wandb.log({"batch map":batch_map})
             
             if step % num_steps == 0:
                 time_taken = time.time() - start_time
@@ -166,35 +215,35 @@ def train_model(model, dataloaders, criterion, optimizer,
                         
                 valid_loss /= len(dataloaders['valid'].dataset)
                 valid_map /= len(dataloaders['valid'].dataset)
-                
-                if valid_map > best_valid_map:
-                    best_valid_map = valid_map
-                    best_model_wts = copy.deepcopy(model.state_dict())
+                wandb.log({"valid loss":valid_loss})
+                wandb.log({"valid map":valid_map})
                 
                 valid_loss_history.append(valid_loss)
                 valid_map_history.append(valid_map)
 
         total_iteration = len(dataloaders['train'].dataset)
-        train_loss /= total_iteration
-        train_map /= total_iteration
+        epoch_loss = batch_loss / total_iteration
+        epoch_map = batch_map / total_iteration
         mean_valid_loss = np.mean(valid_loss_history)
         mean_valid_map = np.mean(valid_map_history)
-        print_status_bar(step * BATCH_SIZE,
+        
+        wandb.log({"epoch loss":epoch_loss})
+        wandb.log({"epoch map":epoch_map})
+        print_status_bar(step * config.batch_size,
                          total_iteration,
-                         train_loss,
-                         train_map,
+                         epoch_loss,
+                         epoch_map,
                          mean_valid_loss,
                          mean_valid_map,
                          time_taken)
-        print('Train loss: {:.4f}, map: {:.4f}'.format(train_loss, train_map))
         
-    model.load_state_dict(best_model_wts)
-    return model, valid_loss_history, valid_map_history
-
 def print_status_bar(iteration, total, train_loss, train_map,
-                     mean_valid_loss, mean_valid_map, time_taken):
-    pass
-    
+                     valid_loss, valid_map, time_taken):
+    end = "" if iteration < total else "\n"
+    print(f"{iteration}/{total} - train loss: {train_loss:.4f} - " + 
+        f"train map: {train_map:.4f} - valid loss: {valid_loss:.4f} - " +
+        f"valid map: {valid_map:.4f} - " + f"time spent: " +
+        f"{time_taken:.2f}" + "\n" + end)
     
 def set_parameter_requires_grad(model, feature_extracting):
     if feature_extracting:
