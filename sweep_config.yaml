@@ -1,0 +1,25 @@
+program: main.py
+method: bayes
+metric:
+  name: loss
+  goal: minimize
+early_terminate:
+  type: hyperband
+  min_iter: 3
+parameters:
+  epochs:
+    distribution: int_uniform
+    min: 25
+    max: 200
+  batch_size:
+    values: [8, 64, 128, 256]
+  learning_rate:
+    values: [0.1, 0.01, 0.001, 0.0001]
+  optimizer:
+    values: ["adam", "sgd", "rmsprop"]
+  scheduler:
+    values: ['cos', 'linear']
+  use_feature_extract:
+    values: [True, False]
+  resnet_type:
+    values: ['resnet18', 'resnet34', 'resnet50']

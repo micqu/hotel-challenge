@@ -13,44 +13,15 @@ import ml_metrics
 import wandb
 import utility
 import data
+import yaml
 
 NUM_WORKERS = 8
-
 PRINT_STATUS = False # set to False to avoid print messages
 USE_AMP = False # set to True to use NVIDIA apex 16-bit precision
 
 def main():
-    sweep_config = {
-        'method': 'bayes', #grid, random, bayes
-        'metric': {
-        'name': 'loss',
-        'goal': 'minimize'
-        },
-        'early_terminate': {
-            'type': 'hyperband',
-            'min_iter': 3,
-        },
-        'parameters': {
-            'epochs': {
-                'values': [10, 20, 50]
-            },
-            'batch_size': {
-                'values': [64, 32, 16, 8]
-            },
-            'learning_rate': {
-                'values': [1e-1, 3e-2, 1e-2, 1e-3, 1e-4, 3e-4, 3e-5, 1e-5]
-            },
-            'optimizer': {
-                'values': ['adam', 'rmsprop', 'sgd']
-            },
-            'use_feature_extract': {
-                'values': [True, False]
-            },
-            'resnet_type': {
-                'values': ['resnet18', 'resnet34', 'resnet50']
-            }
-        }
-    }
+    with open('sweep_config.yaml', 'r') as f:
+        sweep_config = yaml.load(f, yaml.FullLoader)
     sweep_id = wandb.sweep(sweep_config, project="hotel-challenge")
     wandb.agent(sweep_id, train_model)
     
@@ -100,8 +71,9 @@ def train_model():
         scaler = torch.cuda.amp.GradScaler()
     
     # Define scheduler
-    #scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer, max_lr=100, epochs=config.epochs,
-    #                                          steps_per_epoch=len(dataloaders['train']))
+    scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer, max_lr=100, epochs=config.epochs,
+                                              anneal_strategy=config.scheduler,
+                                              steps_per_epoch=len(dataloaders['train']))
     
     valid_loss_history = []
     valid_map_history = []
@@ -127,7 +99,7 @@ def train_model():
                 loss = criterion(outputs, labels)
                 loss.backward()
                 optimizer.step()
-                #scheduler.step()
+                scheduler.step()
             
             batch_loss += loss.item() * inputs.size(0)
             batch_map += calculate_map(outputs, labels)
@@ -159,10 +131,16 @@ def train_model():
         epoch_map = batch_map / total_iteration
         mean_valid_map = np.mean(valid_map_history)
         
+        wandb.log({"epoch_loss": epoch_loss,
+                   "epoch_map": epoch_map,
+                   "epoch": epoch,
+                   "valid_loss": mean_valid_loss,
+                   "valid_map": mean_valid_map})
+        
         if PRINT_STATUS:
             print_status_bar(epoch,
                              config.epochs,
-                             step * config.batch_size,
+                             step*config.batch_size,
                              total_iteration,
                              epoch_loss,
                              epoch_map,
@@ -174,8 +152,8 @@ def print_status_bar(epoch, total_epoch, iteration, total, train_loss, train_map
                      valid_loss, valid_map, time_taken):
     end = "" if iteration < total else "\n"
     print(f"At epoch: {epoch}/{total_epoch} - iteration: {iteration}/{total}" +
-        "- train loss: {train_loss:.4f} - " + f"train map: {train_map:.4f}" +
-        "- valid loss: {valid_loss:.4f} - " + f"valid map: {valid_map:.4f}" +
+        f"- train loss: {train_loss:.4f} - " + f"train map: {train_map:.4f}" +
+        f"- valid loss: {valid_loss:.4f} - " + f"valid map: {valid_map:.4f}" +
         "- time spent: " + f"{time_taken:.2f}" + "\n" + end)
           
 def calculate_map(outputs, labels):
