@@ -12,6 +12,7 @@ from torchvision import transforms
 from skimage import io, transform
 import matplotlib.pyplot as plt
 from PIL import Image
+Image.MAX_IMAGE_PIXELS = None
 import pandas as pd
 import time
 import copy
@@ -19,6 +20,9 @@ import ml_metrics
 import wandb
 
 IMAGE_SIZE = 224
+PRINT_STATUS = False # set to False to avoid print messages
+CALCULATE_MAP = True # set to False to avoid copying to CPU
+USE_AMP = False # set to True to use NVIDIA apex 16-bit precision
 
 def encode_labels(df):
     le = LabelEncoder()
@@ -44,19 +48,20 @@ def build_dataset(batch_size):
     }
     
     df = pd.read_csv('data/train.csv')
-    df = df.groupby('hotel_id').filter(lambda x : len(x)>1) #remove hotel ids with only 1 sample
+    df = df.groupby('hotel_id').filter(lambda x : len(x)>50) #remove hotel ids with only 1 sample
     df, label_encoder = encode_labels(df)
     num_classes = len(df['label'].value_counts())
         
     y = df.label
     X = df.drop(['label', 'timestamp'], axis=1)
-    X_train, X_valid, y_train, y_valid = train_test_split(X, y, train_size=0.8, stratify=y)
+    X_train, X_valid, y_train, y_valid = train_test_split(X, y, train_size=0.7,
+                                                          stratify=y, random_state=0)
     
     df_train = X_train.merge(y_train, left_index=True, right_index=True)
     df_valid = X_valid.merge(y_valid, left_index=True, right_index=True)
     
-    #df_train = df_train.iloc[:1000,:] # only first 1000 rows
-    #df_valid = df_valid.iloc[:1000,:]
+    #df_train = df_train.iloc[:int(len(df_train)*0.2),:] #20% of train set
+    #df_valid = df_valid.iloc[:int(len(df_valid)*0.1),:]
     
     data_dir = 'data/train_images'
     data_files = {'train': df_train, 'valid': df_valid}
@@ -84,10 +89,10 @@ def main():
         },
         'parameters': {
             'epochs': {
-                'values': [20, 50, 100]
+                'values': [10, 20, 50]
             },
             'batch_size': {
-                'values': [512, 256, 128, 64, 32, 16]
+                'values': [64, 32, 16, 8]
             },
             'learning_rate': {
                 'values': [1e-1, 3e-2, 1e-2, 1e-3, 1e-4, 3e-4, 3e-5, 1e-5]
@@ -155,28 +160,34 @@ def train_model():
     
     # Define criterion + optimizer
     criterion = nn.CrossEntropyLoss()
-    if config.optimizer=='sgd':    
+    if config.optimizer=='sgd':
         optimizer = optim.SGD(params_to_update, lr=config.learning_rate)
     elif config.optimizer=='rmsprop':
         optimizer = optim.RMSprop(params_to_update, lr=config.learning_rate)
     elif config.optimizer=='adam':
         optimizer = optim.Adam(params_to_update, lr=config.learning_rate)
     
+    if USE_AMP:
+        scaler = torch.cuda.amp.GradScaler()
+    
     # Define scheduler
-    scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer, max_lr=100, epochs=config.epochs,
-                                              steps_per_epoch=len(dataloaders['train']))
+    #scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer, max_lr=100, epochs=config.epochs,
+    #                                          steps_per_epoch=len(dataloaders['train']))
     
     valid_loss_history = []
-    valid_map_history = []
+    if CALCULATE_MAP:
+        valid_map_history = []
 
     # Run train loop
     start_time = time.time()
     num_steps = len(dataloaders['train'].dataset) // config.batch_size
     for epoch in range(1, config.epochs + 1):
-        print(f"Epoch {epoch}/{config.epochs}")
         model.train()
         batch_loss = 0.0
-        batch_map = 0.0
+        
+        if CALCULATE_MAP:
+            batch_map = 0.0
+        
         for step, (inputs, labels) in enumerate(dataloaders['train']):
             inputs = inputs.to(device)
             labels = labels.to(device)
@@ -190,19 +201,23 @@ def train_model():
                 loss = criterion(outputs, labels)
                 loss.backward()
                 optimizer.step()
-                scheduler.step()
+                #scheduler.step()
             
             batch_loss += loss.item() * inputs.size(0)
-            batch_map += calculate_map(outputs, labels)
             wandb.log({"batch loss":batch_loss})
-            wandb.log({"batch map":batch_map})
             
+            if CALCULATE_MAP:            
+                batch_map += calculate_map(outputs, labels)
+                wandb.log({"batch map":batch_map})
+
             if step % num_steps == 0:
                 time_taken = time.time() - start_time
                 valid_loss = 0.0
-                valid_map = 0.0
-                model.eval()
                 
+                if CALCULATE_MAP:
+                    valid_map = 0.0
+                    
+                model.eval()
                 with torch.no_grad():
                     for inputs, labels in dataloaders['valid']:
                         inputs = inputs.to(device)
@@ -211,39 +226,49 @@ def train_model():
                         outputs = model(inputs)
                         loss = criterion(outputs, labels)
                         valid_loss += loss.item() * inputs.size(0)
-                        valid_map += calculate_map(outputs, labels)
+                        if CALCULATE_MAP:
+                            valid_map += calculate_map(outputs, labels)
                         
                 valid_loss /= len(dataloaders['valid'].dataset)
-                valid_map /= len(dataloaders['valid'].dataset)
+                valid_loss_history.append(valid_loss)                
                 wandb.log({"valid loss":valid_loss})
-                wandb.log({"valid map":valid_map})
                 
-                valid_loss_history.append(valid_loss)
-                valid_map_history.append(valid_map)
-
+                if CALCULATE_MAP:
+                    valid_map /= len(dataloaders['valid'].dataset)
+                    wandb.log({"valid map":valid_map})
+                    valid_map_history.append(valid_map)
+                
         total_iteration = len(dataloaders['train'].dataset)
         epoch_loss = batch_loss / total_iteration
-        epoch_map = batch_map / total_iteration
         mean_valid_loss = np.mean(valid_loss_history)
-        mean_valid_map = np.mean(valid_map_history)
-        
         wandb.log({"epoch loss":epoch_loss})
-        wandb.log({"epoch map":epoch_map})
-        print_status_bar(step * config.batch_size,
-                         total_iteration,
-                         epoch_loss,
-                         epoch_map,
-                         mean_valid_loss,
-                         mean_valid_map,
-                         time_taken)
         
-def print_status_bar(iteration, total, train_loss, train_map,
+        if CALCULATE_MAP:        
+            epoch_map = batch_map / total_iteration
+            mean_valid_map = np.mean(valid_map_history)
+            wandb.log({"epoch map":epoch_map})
+        
+        if PRINT_STATUS:
+            if not CALCULATE_MAP:
+                epoch_map = 0.0
+                mean_valid_map = 0.0
+            print_status_bar(epoch,
+                             config.epochs,
+                             step * config.batch_size,
+                             total_iteration,
+                             epoch_loss,
+                             epoch_map,
+                             mean_valid_loss,
+                             mean_valid_map,
+                             time_taken)
+        
+def print_status_bar(epoch, total_epoch, iteration, total, train_loss, train_map,
                      valid_loss, valid_map, time_taken):
     end = "" if iteration < total else "\n"
-    print(f"{iteration}/{total} - train loss: {train_loss:.4f} - " + 
-        f"train map: {train_map:.4f} - valid loss: {valid_loss:.4f} - " +
-        f"valid map: {valid_map:.4f} - " + f"time spent: " +
-        f"{time_taken:.2f}" + "\n" + end)
+    print(f"At epoch: {epoch}/{total_epoch} - iteration: {iteration}/{total}" +
+        "- train loss: {train_loss:.4f} - " + f"train map: {train_map:.4f}" +
+        "- valid loss: {valid_loss:.4f} - " + f"valid map: {valid_map:.4f}" +
+        "- time spent: " + f"{time_taken:.2f}" + "\n" + end)
     
 def set_parameter_requires_grad(model, feature_extracting):
     if feature_extracting:

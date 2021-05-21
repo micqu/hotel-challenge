@@ -3,6 +3,7 @@ import torch
 from torch.utils.data import Dataset
 from skimage import io, transform
 from PIL import Image
+Image.MAX_IMAGE_PIXELS = None
 
 class HotelImagesDataset(Dataset):
     """Hotel images dataset."""
