@@ -14,7 +14,6 @@ import utility
 import data
 import yaml
 
-NUM_WORKERS = 8
 PRINT_STATUS = False # set to False to avoid print messages
 USE_AMP = False # set to True to use NVIDIA apex 16-bit precision
 
@@ -25,18 +24,11 @@ def main():
     wandb.agent(sweep_id, train_model)
     
 def train_model():
-    config_defaults = {
-        'epochs': 10,
-        'batch_size': 32,
-        'learning_rate': 1e-3,
-        'optimizer': 'adam',
-        'use_feature_extract': True,
-        'resnet_type': 'resnet18'
-    }
+    # Init device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Initialize a new wandb run
-    wandb.init(config=config_defaults)
+    wandb.init()
     
     # Config is a variable that holds and saves hyperparameters and inputs
     config = wandb.config
@@ -70,15 +62,13 @@ def train_model():
         scaler = torch.cuda.amp.GradScaler()
     
     # Define scheduler
-    scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer, max_lr=100, epochs=config.epochs,
+    scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer, max_lr=10, epochs=config.epochs,
                                               anneal_strategy=config.scheduler,
                                               steps_per_epoch=len(dataloaders['train']))
     
     # Run train loop
     start_time = time.time()
-    num_steps = len(dataloaders['train'].dataset) // config.batch_size
     for epoch in range(1, config.epochs + 1):
-        
         model.train()
         train_loss = 0.0
         train_map = 0.0
@@ -119,14 +109,13 @@ def train_model():
         valid_loss /= len(dataloaders['valid'].dataset)
         valid_map /= len(dataloaders['valid'].dataset)
         
-        time_taken = time.time() - start_time
         wandb.log({"train_loss": train_loss,
                    "train_map": train_map,
                    "epoch": epoch,
-                   "time_taken": time_taken,
                    "valid_loss": valid_loss,
                    "valid_map": valid_map})
         
+        time_taken = time.time() - start_time
         if PRINT_STATUS:
             print_status_bar(epoch,
                              config.epochs,

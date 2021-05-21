@@ -8,9 +8,7 @@ early_terminate:
   min_iter: 3
 parameters:
   epochs:
-    distribution: int_uniform
-    min: 25
-    max: 200
+    values: [5, 20, 50]
   batch_size:
     values: [8, 64, 128, 256]
   learning_rate:

@@ -70,9 +70,11 @@ def build_dataset(batch_size):
     }
     
     df = pd.read_csv('data/train.csv')
-    df = df.groupby('hotel_id').filter(lambda x : len(x)>50) #remove hotel ids with only 1 sample
+    df = df.groupby('hotel_id').filter(lambda x : len(x)>1) #remove hotel ids with only 1 sample
     df, label_encoder = utility.encode_labels(df)
     num_classes = len(df['label'].value_counts())
+    
+    df = df.loc[df['chain'] == 0] # use only chain 0
         
     y = df.label
     X = df.drop(['label', 'timestamp'], axis=1)
@@ -81,9 +83,6 @@ def build_dataset(batch_size):
     
     df_train = X_train.merge(y_train, left_index=True, right_index=True)
     df_valid = X_valid.merge(y_valid, left_index=True, right_index=True)
-    
-    #df_train = df_train.iloc[:int(len(df_train)*0.2),:] #20% of train set
-    #df_valid = df_valid.iloc[:int(len(df_valid)*0.1),:]
     
     data_dir = 'data/train_images'
     data_files = {'train': df_train, 'valid': df_valid}
