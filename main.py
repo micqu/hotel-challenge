@@ -84,13 +84,13 @@ def main():
         },
         'parameters': {
             'epochs': {
-                'values': [10, 20, 50, 100]
+                'values': [20, 50, 100]
             },
             'batch_size': {
-                'values': [256, 128, 64, 32]
+                'values': [512, 256, 128, 64, 32, 16]
             },
             'learning_rate': {
-                'values': [1e-2, 1e-3, 1e-4, 3e-4, 3e-5, 1e-5]
+                'values': [1e-1, 3e-2, 1e-2, 1e-3, 1e-4, 3e-4, 3e-5, 1e-5]
             },
             'optimizer': {
                 'values': ['adam', 'rmsprop', 'sgd']
