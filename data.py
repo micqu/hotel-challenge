@@ -9,7 +9,7 @@ from torchvision import transforms
 import utility
 from sklearn.model_selection import train_test_split
 
-IMAGE_SIZE = 224
+IMAGE_SIZE = 64
 NUM_WORKERS = 8
 
 class HotelImagesDataset(Dataset):
