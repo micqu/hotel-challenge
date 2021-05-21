@@ -55,8 +55,8 @@ def build_dataset(batch_size):
     df_train = X_train.merge(y_train, left_index=True, right_index=True)
     df_valid = X_valid.merge(y_valid, left_index=True, right_index=True)
     
-    df_train = df_train.iloc[:1000,:] # only first 1000 rows
-    df_valid = df_valid.iloc[:1000,:]
+    #df_train = df_train.iloc[:1000,:] # only first 1000 rows
+    #df_valid = df_valid.iloc[:1000,:]
     
     data_dir = 'data/train_images'
     data_files = {'train': df_train, 'valid': df_valid}
