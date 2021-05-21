@@ -53,17 +53,17 @@ def build_dataset(batch_size):
     std = [0.229, 0.224, 0.225]
     data_transforms = {
         'train': transforms.Compose([
-            transforms.RandomResizedCrop(IMAGE_SIZE),
+            utility.AddPadding(),
+            transforms.Resize((IMAGE_SIZE,IMAGE_SIZE)),
             transforms.RandomHorizontalFlip(),
             transforms.RandomRotation(10),
             transforms.ToTensor(),
             transforms.Normalize(mean, std),
             transforms.RandomApply([utility.AddGaussianNoise(0., 1.)], p=0.5),
-            transforms.RandomErasing(p=0.75,scale=(0.02, 0.1),value=1.0, inplace=False)
+            transforms.RandomErasing(p=0.75, scale=(0.02, 0.1), value=1.0, inplace=False)
         ]),
         'valid': transforms.Compose([
-            transforms.Resize(IMAGE_SIZE),
-            transforms.CenterCrop(IMAGE_SIZE),
+            transforms.Resize((IMAGE_SIZE,IMAGE_SIZE)),
             transforms.ToTensor(),
             transforms.Normalize(mean, std),
         ]),

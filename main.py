@@ -2,7 +2,6 @@ import numpy as np
 from torch import nn
 import torch.optim as optim
 import torch
-import torchvision
 import matplotlib.pyplot as plt
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
@@ -75,18 +74,15 @@ def train_model():
                                               anneal_strategy=config.scheduler,
                                               steps_per_epoch=len(dataloaders['train']))
     
-    valid_loss_history = []
-    valid_map_history = []
-
     # Run train loop
     start_time = time.time()
     num_steps = len(dataloaders['train'].dataset) // config.batch_size
     for epoch in range(1, config.epochs + 1):
-        model.train()
-        batch_loss = 0.0
-        batch_map = 0.0
         
-        for step, (inputs, labels) in enumerate(dataloaders['train']):
+        model.train()
+        train_loss = 0.0
+        train_map = 0.0
+        for inputs, labels in dataloaders['train']:
             inputs = inputs.to(device)
             labels = labels.to(device)
             
@@ -101,60 +97,51 @@ def train_model():
                 optimizer.step()
                 scheduler.step()
             
-            batch_loss += loss.item() * inputs.size(0)
-            batch_map += calculate_map(outputs, labels)
-
-            if step % num_steps == 0:
-                time_taken = time.time() - start_time
-                valid_loss = 0.0
-                valid_map = 0.0
-                    
-                model.eval()
-                with torch.no_grad():
-                    for inputs, labels in dataloaders['valid']:
-                        inputs = inputs.to(device)
-                        labels = labels.to(device)
-                        
-                        outputs = model(inputs)
-                        loss = criterion(outputs, labels)
-                        valid_loss += loss.item() * inputs.size(0)
-                        valid_map += calculate_map(outputs, labels)
-                        
-                valid_loss /= len(dataloaders['valid'].dataset)
-                valid_loss_history.append(valid_loss)                
-                valid_map /= len(dataloaders['valid'].dataset)
-                valid_map_history.append(valid_map)
+            train_loss += loss.item() * inputs.size(0)
+            train_map += calculate_map(outputs, labels)
+            
+        model.eval()
+        valid_loss = 0.0
+        valid_map = 0.0
+        for inputs, labels in dataloaders['valid']:
+            with torch.no_grad():
+                inputs = inputs.to(device)
+                labels = labels.to(device)
                 
-        total_iteration = len(dataloaders['train'].dataset)
-        epoch_loss = batch_loss / total_iteration
-        mean_valid_loss = np.mean(valid_loss_history)
-        epoch_map = batch_map / total_iteration
-        mean_valid_map = np.mean(valid_map_history)
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+            
+            valid_loss += loss.item() * inputs.size(0)
+            valid_map += calculate_map(outputs, labels)
+
+        train_loss /= len(dataloaders['train'].dataset)
+        train_map /= len(dataloaders['train'].dataset)
+        valid_loss /= len(dataloaders['valid'].dataset)
+        valid_map /= len(dataloaders['valid'].dataset)
         
-        wandb.log({"epoch_loss": epoch_loss,
-                   "epoch_map": epoch_map,
+        time_taken = time.time() - start_time
+        wandb.log({"train_loss": train_loss,
+                   "train_map": train_map,
                    "epoch": epoch,
-                   "valid_loss": mean_valid_loss,
-                   "valid_map": mean_valid_map})
+                   "time_taken": time_taken,
+                   "valid_loss": valid_loss,
+                   "valid_map": valid_map})
         
         if PRINT_STATUS:
             print_status_bar(epoch,
                              config.epochs,
-                             step*config.batch_size,
-                             total_iteration,
-                             epoch_loss,
-                             epoch_map,
-                             mean_valid_loss,
-                             mean_valid_map,
+                             train_loss,
+                             train_map,
+                             valid_loss,
+                             valid_map,
                              time_taken)
         
-def print_status_bar(epoch, total_epoch, iteration, total, train_loss, train_map,
+def print_status_bar(epoch, total_epoch, train_loss, train_map,
                      valid_loss, valid_map, time_taken):
-    end = "" if iteration < total else "\n"
-    print(f"At epoch: {epoch}/{total_epoch} - iteration: {iteration}/{total}" +
+    print(f"At epoch: {epoch}/{total_epoch}" +
         f"- train loss: {train_loss:.4f} - " + f"train map: {train_map:.4f}" +
         f"- valid loss: {valid_loss:.4f} - " + f"valid map: {valid_map:.4f}" +
-        "- time spent: " + f"{time_taken:.2f}" + "\n" + end)
+        "- time spent: " + f"{time_taken:.2f}" + "\n")
           
 def calculate_map(outputs, labels):
     top_k = torch.topk(outputs, 5)
