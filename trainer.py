@@ -1,9 +1,17 @@
 import torch
 import utility
 import wandb
+import copy
+import time
+import datetime
 
 def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
-                scheduler, epochs, send_to_wandb: bool = False):
+                scheduler, epochs, send_to_wandb: bool = False, print_status: bool = False):
+
+    best_model_wts = copy.deepcopy(model.state_dict())
+    best_valid_map = 0.0
+    since = time.time()
+    
     # Run train loop
     for epoch in range(1, epochs + 1):
         model.train()
@@ -45,6 +53,11 @@ def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
         train_map /= len(train_loader.dataset)
         valid_loss /= len(valid_loader.dataset)
         valid_map /= len(valid_loader.dataset)
+            
+        # deep copy the model
+        if valid_map > best_valid_map:
+            best_valid_map = valid_map
+            best_model_wts = copy.deepcopy(model.state_dict())
         
         if send_to_wandb:     
             wandb.log({"train_loss": train_loss,
@@ -52,3 +65,21 @@ def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
                     "epoch": epoch,
                     "valid_loss": valid_loss,
                     "valid_map": valid_map})
+        
+        time_taken = time.time() - since         
+        if print_status:
+            print_status_bar(epoch, epochs, train_loss, train_map,
+                             valid_loss, valid_map, time_taken)
+    
+    model.load_state_dict(best_model_wts)
+    return model
+
+def print_status_bar(epoch, total_epoch, train_loss, train_map,
+                     valid_loss, valid_map, time_taken):
+    time_taken_min = str(datetime.timedelta(seconds=round(time_taken)))
+    print(f"At epoch: {epoch}/{total_epoch}" +
+        f" - train loss: {train_loss:.4f}" +
+        f" - train map: {train_map:.4f}" +
+        f" - valid loss: {valid_loss:.4f}" +
+        f" - valid map: {valid_map:.4f}" +
+        f" - time spent: {time_taken_min}")

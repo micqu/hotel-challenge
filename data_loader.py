@@ -11,7 +11,6 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from torch.utils.data.sampler import SubsetRandomSampler
 
-IMAGE_SIZE = 64
 NUM_WORKERS = 8
 
 class HotelImagesDataset(Dataset):
@@ -53,6 +52,7 @@ class HotelImagesDataset(Dataset):
 def get_train_valid_loader(df,
                            data_dir,
                            batch_size: int,
+                           image_size: int,
                            augment: bool,
                            random_seed: int,
                            train_size: float = 0.7,
@@ -67,7 +67,7 @@ def get_train_valid_loader(df,
     # define transforms
     valid_transform = transforms.Compose([
             utility.AddPadding(),
-            transforms.Resize((IMAGE_SIZE,IMAGE_SIZE)),
+            transforms.Resize((image_size,image_size)),
             transforms.ToTensor(),
             normalize,
     ])
@@ -75,17 +75,15 @@ def get_train_valid_loader(df,
     if augment:
         train_transform = transforms.Compose([
             utility.AddPadding(),
-            transforms.Resize((IMAGE_SIZE,IMAGE_SIZE)),
-            transforms.RandomHorizontalFlip(),
+            transforms.Resize((image_size,image_size)),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             normalize,
-            transforms.RandomApply([utility.AddGaussianNoise(0., 1.)], p=0.5),
-            transforms.RandomErasing(p=0.75, scale=(0.02, 0.1), value=1.0, inplace=False)
+            transforms.RandomApply([utility.AddGaussianNoise(0., 1.)], p=0.5)
         ])
     else:
         train_transform = transforms.Compose([
-            transforms.Resize((IMAGE_SIZE,IMAGE_SIZE)),
+            transforms.Resize((image_size,image_size)),
             transforms.ToTensor(),
             normalize,
         ])

@@ -14,7 +14,7 @@ import utility
 import yaml
 import trainer
 
-USE_AMP = False # set to True to use NVIDIA apex 16-bit precision
+IMAGE_SIZE = 64
 
 def main():
     with open('sweep_config.yaml', 'r') as f:
@@ -44,6 +44,7 @@ def train_model():
         df,
         data_dir='data/train_images',
         batch_size=config.batch_size,
+        image_size=IMAGE_SIZE,
         augment=True,
         random_seed=0
     )
@@ -64,10 +65,7 @@ def train_model():
         optimizer = optim.RMSprop(params_to_update, lr=config.learning_rate)
     elif config.optimizer=='adam':
         optimizer = optim.Adam(params_to_update, lr=config.learning_rate)
-    
-    if USE_AMP:
-        scaler = torch.cuda.amp.GradScaler()
-    
+
     # Define scheduler
     scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer,
                                               max_lr=10, epochs=config.epochs,
