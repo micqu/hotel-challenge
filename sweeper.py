@@ -12,6 +12,7 @@ import copy
 import wandb
 import utility
 import yaml
+import trainer
 
 USE_AMP = False # set to True to use NVIDIA apex 16-bit precision
 
@@ -31,30 +32,32 @@ def train_model():
     # Config is a variable that holds and saves hyperparameters and inputs
     config = wandb.config
     
-    # Build dataset
-    train_loader, valid_loader, label_enc, n_classes = dl.get_train_valid_loader(
+    # Load the meta data file
+    df = pd.read_csv('data/train.csv',)
+    df = df.drop(['timestamp'], axis=1)
+    df = df.loc[df['chain'] == 0] # keep only chain 0 for sweeper
+    df, _ = utility.encode_labels(df)
+    num_classes = len(df['label'].value_counts())
+    
+    # Build the dataset
+    train_loader, valid_loader = dl.get_train_valid_loader(
+        df,
         data_dir='data/train_images',
-        meta_data_file='data/train.csv',
         batch_size=config.batch_size,
         augment=True,
         random_seed=0
     )
     
     # Make resnet
-    model = utility.initialize_resnet(n_classes, config.resnet_type,
-                                      config.use_feature_extract)
+    model = utility.initialize_resnet(num_classes, config.resnet_type, config.use_feature_extract)
     model = model.to(device)
     
     # Gather the parameters to be optimized/updated in this run.
-    params_to_update = model.parameters()
-    if config.use_feature_extract:
-        params_to_update = []
-        for name, param in model.named_parameters():
-            if param.requires_grad == True:
-                params_to_update.append(param)
+    params_to_update = utility.get_model_params_to_train(model, config.use_feature_extract)
     
     # Define criterion + optimizer
     criterion = nn.CrossEntropyLoss()
+
     if config.optimizer=='sgd':
         optimizer = optim.SGD(params_to_update, lr=config.learning_rate)
     elif config.optimizer=='rmsprop':
@@ -71,54 +74,15 @@ def train_model():
                                               anneal_strategy=config.scheduler,
                                               steps_per_epoch=len(train_loader))
     
-    # Run train loop
-    start_time = time.time()
-    for epoch in range(1, config.epochs + 1):
-        model.train()
-        train_loss = 0.0
-        train_map = 0.0
-        for inputs, labels in train_loader:
-            inputs = inputs.to(device)
-            labels = labels.to(device)
-            
-            # zero the parameter gradients
-            optimizer.zero_grad()
-
-            # forward
-            with torch.enable_grad():
-                outputs = model(inputs)
-                loss = criterion(outputs, labels)
-                loss.backward()
-                optimizer.step()
-                scheduler.step()
-            
-            train_loss += loss.item() * inputs.size(0)
-            train_map += utility.calculate_map(outputs, labels)
-            
-        model.eval()
-        valid_loss = 0.0
-        valid_map = 0.0
-        for inputs, labels in valid_loader:
-            with torch.no_grad():
-                inputs = inputs.to(device)
-                labels = labels.to(device)
-                
-                outputs = model(inputs)
-                loss = criterion(outputs, labels)
-            
-            valid_loss += loss.item() * inputs.size(0)
-            valid_map += utility.calculate_map(outputs, labels)
-
-        train_loss /= len(train_loader.dataset)
-        train_map /= len(train_loader.dataset)
-        valid_loss /= len(valid_loader.dataset)
-        valid_map /= len(valid_loader.dataset)
-        
-        wandb.log({"train_loss": train_loss,
-                   "train_map": train_map,
-                   "epoch": epoch,
-                   "valid_loss": valid_loss,
-                   "valid_map": valid_map})
-                
+    trainer.train_model(device=device,
+                    model=model,
+                    optimizer=optimizer,
+                    criterion=criterion,
+                    train_loader=train_loader,
+                    valid_loader=valid_loader,
+                    scheduler=scheduler,
+                    epochs=config.epochs,
+                    send_to_wandb=True)
+    
 if __name__ == "__main__":
     main()

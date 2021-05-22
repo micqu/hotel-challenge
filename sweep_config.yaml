@@ -8,16 +8,16 @@ early_terminate:
   min_iter: 3
 parameters:
   epochs:
-    values: [5, 20, 50]
+    values: [50]
   batch_size:
-    values: [8, 64, 128, 256]
+    values: [8, 128, 256]
   learning_rate:
-    values: [0.1, 0.01, 0.001, 0.0001]
+    values: [0.001, 0.0001]
   optimizer:
-    values: ["adam", "sgd", "rmsprop"]
+    values: ["adam"]
   scheduler:
-    values: ['cos', 'linear']
+    values: ['cos']
   use_feature_extract:
-    values: [True, False]
+    values: [True]
   resnet_type:
-    values: ['resnet18', 'resnet34', 'resnet50']
+    values: ['resnet50']

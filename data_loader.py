@@ -50,8 +50,8 @@ class HotelImagesDataset(Dataset):
 
         return X, y
 
-def get_train_valid_loader(data_dir: str,
-                           meta_data_file: str,
+def get_train_valid_loader(df,
+                           data_dir,
                            batch_size: int,
                            augment: bool,
                            random_seed: int,
@@ -90,21 +90,13 @@ def get_train_valid_loader(data_dir: str,
             normalize,
         ])
     
-    # Load meta data file
-    df = pd.read_csv(meta_data_file)
-    df = df.drop(['timestamp'], axis=1)    
-    df = df.groupby('hotel_id').filter(lambda x : len(x)>1) #remove hotel ids with only 1 sample
-    df = df.loc[df['chain'] == 0] # keep only chain 0 for now
-    df, label_encoder = utility.encode_labels(df)
-    num_classes = len(df['label'].value_counts())
-    
     # Load datasets
-    train_dataset = get_dataset(df, data_dir, train_transform)
-    valid_dataset = get_dataset(df, data_dir, valid_transform)
+    train_dataset = HotelImagesDataset(df, root_dir=data_dir, transform=train_transform)
+    valid_dataset = HotelImagesDataset(df, root_dir=data_dir, transform=valid_transform)
     
     num_train = len(train_dataset)
     indices = list(range(num_train))
-    split = int(np.floor((1-train_size) * num_train))
+    split = int(np.floor((1 - train_size) * num_train))
     
     if shuffle:
         np.random.seed(random_seed)
@@ -123,7 +115,7 @@ def get_train_valid_loader(data_dir: str,
                                                pin_memory=pin_memory,
     )
     
-    return train_loader, valid_loader, label_encoder, num_classes
+    return train_loader, valid_loader
 
 def get_test_loader(data_dir,
                     batch_size,

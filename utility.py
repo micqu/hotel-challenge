@@ -65,7 +65,7 @@ def initialize_resnet(num_classes, resnet_type,
     elif resnet_type=='resnet34':
         model_ft = torchvision.models.resnet34(pretrained=use_pretrained)
     elif resnet_type=='resnet50':
-        model_ft = torchvision.models.resnet50(pretrained=use_pretrained)     
+        model_ft = torchvision.models.resnet50(pretrained=use_pretrained)
     set_parameter_requires_grad(model_ft, feature_extract)
     num_ftrs = model_ft.fc.in_features
     model_ft.fc = torch.nn.Linear(num_ftrs, num_classes)
@@ -81,3 +81,12 @@ def calculate_map(outputs, labels):
     preds = top_k.indices.detach().cpu().numpy()
     corrects = labels.detach().cpu().numpy()
     return ml_metrics.mapk([[x] for x in corrects], preds, k=5)
+
+def get_model_params_to_train(model, use_feature_extract):
+    params_to_update = model.parameters()
+    if use_feature_extract:
+            params_to_update = []
+            for name, param in model.named_parameters():
+                if param.requires_grad == True:
+                    params_to_update.append(param)
+    return params_to_update
