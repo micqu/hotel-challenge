@@ -1,4 +1,4 @@
-program: main.py
+program: sweeper.py
 method: bayes
 metric:
   name: loss

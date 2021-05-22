@@ -1,10 +1,11 @@
 import math
 import utility
 import torch
-from data import build_dataset
+import data_loader as dl
 import matplotlib.pyplot as plt
 
 USE_FEATURE_EXTRACT = True
+BATCH_SIZE = 64
 
 def main():
     logs, losses = find_lr()
@@ -19,10 +20,16 @@ def find_lr():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Build dataset
-    dataloaders, label_encoder, num_classes = build_dataset(batch_size=32)
+    train_loader, _, _, n_classes = dl.get_train_valid_loader(
+        data_dir='data/train_images',
+        meta_data_file='data/train.csv',
+        batch_size=BATCH_SIZE,
+        augment=True,
+        random_seed=0
+    )
     
     # Make resnet
-    model = utility.initialize_resnet(num_classes, 'resnet18',
+    model = utility.initialize_resnet(n_classes, 'resnet18',
                                       feature_extract=USE_FEATURE_EXTRACT)
     model = model.to(device)
     
@@ -36,7 +43,7 @@ def find_lr():
     init_value=1e-8
     final_value=100.0
     
-    number_in_epoch = len(dataloaders['train']) - 1
+    number_in_epoch = len(train_loader) - 1
     update_step = (final_value / init_value) ** (1 / number_in_epoch)
     lr = init_value
     
@@ -47,7 +54,7 @@ def find_lr():
     batch_num = 0
     losses = []
     log_lrs = []
-    for inputs, labels in dataloaders['train']:
+    for inputs, labels in train_loader:
         inputs = inputs.to(device)
         labels = labels.to(device)
         

@@ -2,6 +2,7 @@ import torch
 import torchvision
 import numpy as np
 import numbers
+import ml_metrics
 from sklearn.preprocessing import LabelEncoder
 from torchvision.transforms.functional import pad
 
@@ -74,3 +75,9 @@ def set_parameter_requires_grad(model, feature_extracting):
     if feature_extracting:
         for param in model.parameters():
             param.requires_grad = False
+        
+def calculate_map(outputs, labels):
+    top_k = torch.topk(outputs, 5)
+    preds = top_k.indices.detach().cpu().numpy()
+    corrects = labels.detach().cpu().numpy()
+    return ml_metrics.mapk([[x] for x in corrects], preds, k=5)
