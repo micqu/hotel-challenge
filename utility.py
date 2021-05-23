@@ -132,16 +132,19 @@ def initialize_resnet(num_classes, resnet_type,
         model_ft = torchvision.models.resnet34(pretrained=use_pretrained)
     elif resnet_type=='resnet50':
         model_ft = torchvision.models.resnet50(pretrained=use_pretrained)
-    set_parameter_requires_grad(model_ft, feature_extract)
+    elif resnet_type=='resnext':
+        model_ft = torchvision.models.resnext50_32x4d(pretrained=use_pretrained)
+     
+    if feature_extract:
+        for param in model_ft.parameters():
+            param.requires_grad = False
+            
     num_ftrs = model_ft.fc.in_features
-    model_ft.fc = torch.nn.Linear(num_ftrs, num_classes)
+    model_ft.fc = torch.nn.Sequential(
+        torch.nn.Dropout(0.20),
+        torch.nn.Linear(num_ftrs, num_classes))
     return model_ft
 
-def set_parameter_requires_grad(model, feature_extracting):
-    if feature_extracting:
-        for param in model.parameters():
-            param.requires_grad = False
-        
 def calculate_map(outputs, labels):
     top_k = torch.topk(outputs, 5)
     preds = top_k.indices.detach().cpu().numpy()

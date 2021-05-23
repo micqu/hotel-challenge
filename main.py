@@ -13,12 +13,20 @@ import trainer
 from PIL import Image
 from os import path
 Image.MAX_IMAGE_PIXELS = None
+from scipy.io import savemat
+from sklearn.model_selection import train_test_split
+from torchvision import transforms
 
 PRINT_STATUS = True
-BATCH_SIZE = 8
-EPOCHS = 1
+BATCH_SIZE = 32
+EPOCHS = 20
 LR = 1e-3
 ANNEAL_STRAT = "cos"
+IMAGE_SIZE = 32
+FEATURE_EXTRACT = True
+APPLY_ZCA_TRANS = False
+RESNET_TYPE = "resnet18"
+DATA_DIR = 'data/train_images'
 
 def main():
     # Init device
@@ -30,46 +38,90 @@ def main():
     df, label_encoder = utility.encode_labels(df)
     num_classes = len(df['label'].value_counts())
     
-    for image_size in [64, 128, 224]:
-        for chain_id in df['chain']:
-            chain_df = df.loc[df['chain'] == chain_id]
-        
-            # Build dataset
-            train_loader, valid_loader = dl.get_train_valid_loader(chain_df,
-                                                                data_dir='data/train_images',
-                                                                batch_size=BATCH_SIZE,
-                                                                image_size=image_size,
-                                                                augment=True,
-                                                                random_seed=0)
+    # Generate the ZCA matrix if enabled
+    if APPLY_ZCA_TRANS:
+        data_loader = dl.get_full_data_loader(df, data_dir=DATA_DIR,
+                                            batch_size=BATCH_SIZE,
+                                            image_size=IMAGE_SIZE)
+        train_dataset_arr = next(iter(data_loader))[0].numpy()
+        zca = utility.ZCA()
+        zca.fit(train_dataset_arr)
+        zca_dic = {"zca_matrix": zca.ZCA_mat, "zca_mean": zca.mean}
+        savemat("data/zca_data.mat", zca_dic)
+    
+    # Define normalization
+    normalize = transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225],
+    )
+    
+    # Define transforms
+    train_transform = transforms.Compose([
+            utility.AddPadding(),
+            transforms.Resize((IMAGE_SIZE,IMAGE_SIZE)),
+            transforms.ToTensor(),
+            normalize,
+        ])
+    valid_transform = transforms.Compose([
+            utility.AddPadding(),
+            transforms.Resize((IMAGE_SIZE,IMAGE_SIZE)),
+            transforms.ToTensor(),
+            normalize,
+    ])
+    
+    train_dataset = dl.HotelImagesDataset(df, root_dir=DATA_DIR,
+                                          transform=train_transform)
+    valid_dataset = dl.HotelImagesDataset(df, root_dir=DATA_DIR,
+                                          transform=valid_transform)
+            
+    # Build dataset
+    train_loader, valid_loader = dl.get_train_valid_loader(train_dataset,
+                                                           valid_dataset,
+                                                           batch_size=BATCH_SIZE,
+                                                           random_seed=0)
 
-            model = utility.initialize_resnet(num_classes, "resnet18",
-                                              feature_extract=True, use_pretrained=True)
-            
-            filename = f"models/chain_{chain_id}_model.pt"
-            if path.exists(filename):
-                model.load_state_dict(torch.load(filename))
-            
-            model = model.to(device)
-            optimizer = optim.Adam(model.parameters(), lr=LR)
-            criterion = nn.CrossEntropyLoss()
-            scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer,
-                                                max_lr=10, epochs=EPOCHS,
-                                                anneal_strategy=ANNEAL_STRAT,
-                                                steps_per_epoch=len(train_loader))
+    # Make model based on ResNet
+    model = utility.initialize_resnet(num_classes, RESNET_TYPE,
+                                      feature_extract=FEATURE_EXTRACT)
+    
+    # Gather the parameters to be optimized/updated in this run.
+    params_to_update = utility.get_model_params_to_train(model, FEATURE_EXTRACT)
+    
+    # Send model to GPU
+    model = model.to(device)
+    
+    # Count number of labels in data
+    values = df['label'].value_counts(dropna=False).keys().tolist()
+    counts = df['label'].value_counts(dropna=False).tolist()
+    value_dict = dict(zip(values, counts))
+    
+    # Match number of labels with class labels in training set
+    sample_count = []
+    for lbl_class in train_dataset.classes:
+        sample_count.append(value_dict[lbl_class])
+    
+    # Make a weighted CrossEntropyLoss func
+    weight = 1 / torch.Tensor(sample_count)
+    normedWeights = torch.FloatTensor(weight).to(device)
+    criterion = nn.CrossEntropyLoss(weight=normedWeights)
+    
+    # Make optimizer + scheduler
+    optimizer = optim.SGD(params_to_update, lr=LR)
+    scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer,
+                                        max_lr=10, epochs=EPOCHS,
+                                        anneal_strategy=ANNEAL_STRAT,
+                                        steps_per_epoch=len(train_loader))
 
-            print(f"Now training chain {chain_id} for size {image_size}")
-            trained_model = trainer.train_model(device=device,
-                                                model=model,
-                                                optimizer=optimizer,
-                                                criterion=criterion,
-                                                train_loader=train_loader,
-                                                valid_loader=valid_loader,
-                                                scheduler=scheduler,
-                                                epochs=EPOCHS,
-                                                print_status=PRINT_STATUS)
+    trained_model = trainer.train_model(device=device,
+                                        model=model,
+                                        optimizer=optimizer,
+                                        criterion=criterion,
+                                        train_loader=train_loader,
+                                        valid_loader=valid_loader,
+                                        scheduler=scheduler,
+                                        epochs=EPOCHS,
+                                        print_status=PRINT_STATUS,
+                                        apply_zca_trans=APPLY_ZCA_TRANS)
             
-            torch.save(trained_model.state_dict(), filename)
-            print(f"Done training {chain_id} for size {image_size}")
-                
 if __name__ == "__main__":
     main()

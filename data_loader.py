@@ -1,4 +1,5 @@
 import os
+from numpy.random import shuffle
 import torch
 import pandas as pd
 from torch.utils.data import Dataset
@@ -8,7 +9,6 @@ Image.MAX_IMAGE_PIXELS = None
 from torchvision import transforms
 import utility
 import numpy as np
-from sklearn.model_selection import train_test_split
 from torch.utils.data.sampler import SubsetRandomSampler
 
 class HotelImagesDataset(Dataset):
@@ -55,6 +55,7 @@ def get_full_data_loader(df, data_dir, batch_size, image_size,
     )
     
     transform = transforms.Compose([
+            utility.AddPadding(),
             transforms.Resize((image_size,image_size)),
             transforms.ToTensor(),
             normalize
@@ -64,45 +65,13 @@ def get_full_data_loader(df, data_dir, batch_size, image_size,
                                               num_workers=num_workers, pin_memory=pin_memory)
     return full_loader
 
-def get_train_valid_loader(df,
-                           data_dir,
+def get_train_valid_loader(train_dataset,
+                           valid_dataset,
                            batch_size: int,
-                           image_size: int,
-                           augment: bool,
                            random_seed: int,
                            train_size: float = 0.7,
-                           shuffle=True,
                            num_workers=4,
-                           pin_memory=True):
-    normalize = transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225],
-    )
-    
-    # define transforms
-    valid_transform = transforms.Compose([
-            transforms.Resize((image_size,image_size)),
-            transforms.ToTensor(),
-            normalize,
-    ])
-    
-    if augment:
-        train_transform = transforms.Compose([
-            transforms.Resize((image_size,image_size)),
-            transforms.ToTensor(),
-            normalize,
-        ])
-    else:
-        train_transform = transforms.Compose([
-            transforms.Resize((image_size,image_size)),
-            transforms.ToTensor(),
-            normalize,
-        ])
-    
-    # Load datasets
-    train_dataset = HotelImagesDataset(df, root_dir=data_dir, transform=train_transform)
-    valid_dataset = HotelImagesDataset(df, root_dir=data_dir, transform=valid_transform)
-    
+                           pin_memory=True):            
     num_train = len(train_dataset)
     indices = list(range(num_train))
     split = int(np.floor((1 - train_size) * num_train))
@@ -121,8 +90,7 @@ def get_train_valid_loader(df,
     
     valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=batch_size,
                                                sampler=valid_sampler, num_workers=num_workers,
-                                               pin_memory=pin_memory,
-    )
+                                               pin_memory=pin_memory)
     
     return train_loader, valid_loader
 
