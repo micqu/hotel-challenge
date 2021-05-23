@@ -11,8 +11,6 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from torch.utils.data.sampler import SubsetRandomSampler
 
-NUM_WORKERS = 8
-
 class HotelImagesDataset(Dataset):
     """Hotel images dataset."""
 
@@ -28,7 +26,7 @@ class HotelImagesDataset(Dataset):
         self.root_dir = root_dir
         self.transform = transform
         self.classes = list(self.df['label'].unique())
-
+        
     def __len__(self):
         return len(self.df)
 
@@ -49,6 +47,23 @@ class HotelImagesDataset(Dataset):
 
         return X, y
 
+def get_full_data_loader(df, data_dir, batch_size, image_size,
+                        num_workers=4, pin_memory=False):
+    normalize = transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225],
+    )
+    
+    transform = transforms.Compose([
+            transforms.Resize((image_size,image_size)),
+            transforms.ToTensor(),
+            normalize
+    ])
+    full_dataset = HotelImagesDataset(df, root_dir=data_dir, transform=transform)
+    full_loader = torch.utils.data.DataLoader(full_dataset, batch_size=batch_size,
+                                              num_workers=num_workers, pin_memory=pin_memory)
+    return full_loader
+
 def get_train_valid_loader(df,
                            data_dir,
                            batch_size: int,
@@ -66,7 +81,6 @@ def get_train_valid_loader(df,
     
     # define transforms
     valid_transform = transforms.Compose([
-            utility.AddPadding(),
             transforms.Resize((image_size,image_size)),
             transforms.ToTensor(),
             normalize,
@@ -74,12 +88,9 @@ def get_train_valid_loader(df,
     
     if augment:
         train_transform = transforms.Compose([
-            utility.AddPadding(),
             transforms.Resize((image_size,image_size)),
-            transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             normalize,
-            transforms.RandomApply([utility.AddGaussianNoise(0., 1.)], p=0.5)
         ])
     else:
         train_transform = transforms.Compose([

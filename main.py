@@ -42,7 +42,7 @@ def main():
                                                                 augment=True,
                                                                 random_seed=0)
 
-            model = utility.initialize_resnet(num_classes, "resnet50",
+            model = utility.initialize_resnet(num_classes, "resnet18",
                                               feature_extract=True, use_pretrained=True)
             
             filename = f"models/chain_{chain_id}_model.pt"

@@ -11,6 +11,7 @@ __pycache__/
 build/
 develop-eggs/
 data/train_images
+data/zca_data.mat
 dist/
 downloads/
 eggs/

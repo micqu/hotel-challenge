@@ -4,6 +4,9 @@ import wandb
 import copy
 import time
 import datetime
+import numpy as np
+from scipy import linalg
+from scipy import io
 
 def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
                 scheduler, epochs, send_to_wandb: bool = False, print_status: bool = False):
@@ -12,12 +15,20 @@ def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
     best_valid_map = 0.0
     since = time.time()
     
+    #init ZCA
+    zca_data = io.loadmat('./data/zca_data.mat')
+    transformation_matrix = torch.from_numpy(zca_data['zca_matrix']).float()
+    transformation_mean = torch.from_numpy(zca_data['zca_mean'][0]).float()
+    zca = utility.ZCATransformation(transformation_matrix, transformation_mean)
+    
     # Run train loop
     for epoch in range(1, epochs + 1):
         model.train()
         train_loss = 0.0
         train_map = 0.0
         for inputs, labels in train_loader:
+            inputs = zca(inputs) # run ZCA transformation
+            
             inputs = inputs.to(device)
             labels = labels.to(device)
             
@@ -40,6 +51,8 @@ def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
         valid_map = 0.0
         for inputs, labels in valid_loader:
             with torch.no_grad():
+                inputs = zca(inputs) # run ZCA transformation
+                
                 inputs = inputs.to(device)
                 labels = labels.to(device)
                 
