@@ -14,7 +14,7 @@ import utility
 import yaml
 import trainer
 
-IMAGE_SIZE = 64
+IMAGE_SIZE = 32
 
 def main():
     with open('sweep_config.yaml', 'r') as f:

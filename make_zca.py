@@ -17,7 +17,7 @@ def main():
     df, _ = utility.encode_labels(df)
     data_loader = dl.get_full_data_loader(df, data_dir='data/train_images',
                                           batch_size=128,
-                                          image_size=64)
+                                          image_size=32)
     train_dataset_arr = next(iter(data_loader))[0].numpy()
     
     zca = utility.ZCA()
