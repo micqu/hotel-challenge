@@ -8,9 +8,9 @@ early_terminate:
   min_iter: 3
 parameters:
   epochs:
-    values: [20]
+    values: [100]
   batch_size:
-    values: [8]
+    values: [8, 512]
   learning_rate:
     values: [0.001]
   optimizer:
@@ -20,4 +20,4 @@ parameters:
   use_feature_extract:
     values: [True]
   resnet_type:
-    values: ['resnet18']
+    values: ['resnet18', 'resnet50']
