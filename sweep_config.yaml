@@ -10,7 +10,7 @@ parameters:
   epochs:
     values: [100]
   batch_size:
-    values: [8, 512]
+    values: [8, 128]
   learning_rate:
     values: [0.001]
   optimizer:
