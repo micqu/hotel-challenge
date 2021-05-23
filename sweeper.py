@@ -35,7 +35,6 @@ def train_model():
     # Load the meta data file
     df = pd.read_csv('data/train.csv',)
     df = df.drop(['timestamp'], axis=1)
-    df = df.loc[df['chain'] == 0] # keep only chain 0 for sweeper
     df, _ = utility.encode_labels(df)
     num_classes = len(df['label'].value_counts())
     
