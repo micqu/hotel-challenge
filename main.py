@@ -108,8 +108,7 @@ def main():
         # Make a weighted CrossEntropyLoss func
         weight = 1 / torch.Tensor(sample_count)
         normedWeights = torch.FloatTensor(weight).to(device)
-        #criterion = nn.CrossEntropyLoss(weight=normedWeights)
-        criterion = nn.CrossEntropyLoss()
+        criterion = nn.CrossEntropyLoss(weight=normedWeights)
         
         # Make optimizer + scheduler
         optimizer = optim.SGD(params_to_update, lr=LR)
