@@ -21,7 +21,7 @@ BATCH_SIZE = 32
 EPOCHS = 100
 LR = 0.04
 ANNEAL_STRAT = "cos"
-IMAGE_SIZE = 64
+IMAGE_SIZE = 32
 FEATURE_EXTRACT = True
 APPLY_ZCA_TRANS = True
 DATA_DIR = 'data/train_images'
@@ -32,7 +32,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Load the meta data file
-    df = pd.read_csv('./data/train.csv',)
+    df = pd.read_csv('./data/train.csv')
     df, label_encoder = utility.encode_labels(df)
     num_classes = len(df['label'].value_counts())
     
