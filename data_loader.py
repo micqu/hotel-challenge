@@ -55,7 +55,7 @@ def get_full_data_loader(df, data_dir, batch_size, image_size,
     )
     
     transform = transforms.Compose([
-            utility.AddPadding(),
+            #utility.AddPadding(),
             transforms.Resize((image_size,image_size)),
             transforms.ToTensor(),
             normalize

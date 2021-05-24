@@ -18,7 +18,7 @@ from sklearn.model_selection import train_test_split
 from torchvision import transforms
 
 PRINT_STATUS = True
-BATCH_SIZE = 8
+BATCH_SIZE = 16
 EPOCHS = 100
 LR = 1e-3
 ANNEAL_STRAT = "cos"
@@ -56,7 +56,7 @@ def main():
     
     # Define transforms
     train_transform = transforms.Compose([
-            utility.AddPadding(),
+            #utility.AddPadding(),
             transforms.Resize((IMAGE_SIZE,IMAGE_SIZE)),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomRotation(degrees=(-90, 90)),
@@ -64,10 +64,10 @@ def main():
             transforms.ColorJitter(.4,.4,.4),
             transforms.ToTensor(),
             normalize,
-            transforms.RandomApply([utility.AddGaussianNoise(0., 1.)], p=0.5)
+            #transforms.RandomApply([utility.AddGaussianNoise(0., 1.)], p=0.5)
         ])
     valid_transform = transforms.Compose([
-            utility.AddPadding(),
+            #utility.AddPadding(),
             transforms.Resize((IMAGE_SIZE,IMAGE_SIZE)),
             transforms.ToTensor(),
             normalize,
@@ -84,17 +84,7 @@ def main():
                                                            valid_dataset,
                                                            batch_size=BATCH_SIZE,
                                                            random_seed=0)
-    
-    # Count number of labels in data
-    values = df['label'].value_counts(dropna=False).keys().tolist()
-    counts = df['label'].value_counts(dropna=False).tolist()
-    value_dict = dict(zip(values, counts))
-    
-    # Match number of labels with class labels in training set
-    sample_count = []
-    for lbl_class in train_dataset.classes:
-        sample_count.append(value_dict[lbl_class])
-    
+        
     for net_type in NETS: # train for every net
         model = utility.initialize_net(num_classes, net_type,
                                        feature_extract=FEATURE_EXTRACT)
@@ -105,10 +95,8 @@ def main():
         # Send model to GPU
         model = model.to(device)
 
-        # Make a weighted CrossEntropyLoss func
-        weight = 1 / torch.Tensor(sample_count)
-        normedWeights = torch.FloatTensor(weight).to(device)
-        criterion = nn.CrossEntropyLoss(weight=normedWeights)
+        # Make criterion
+        criterion = nn.CrossEntropyLoss()
         
         # Make optimizer + scheduler
         optimizer = optim.SGD(params_to_update, lr=LR)
