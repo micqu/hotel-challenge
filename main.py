@@ -17,15 +17,15 @@ from scipy.io import savemat
 from sklearn.model_selection import train_test_split
 from torchvision import transforms
 
-BATCH_SIZE = 128
+BATCH_SIZE = 32
 EPOCHS = 100
 LR = 0.01
 ANNEAL_STRAT = "cos"
-IMAGE_SIZE = 64
-FEATURE_EXTRACT = False
+FEATURE_EXTRACT = True
 APPLY_ZCA_TRANS = True
 DATA_DIR = 'data/train_images'
-NETS = ['resnext'] # train on resnext, no pretraining
+NETS = ['squeezenet'] # train on squeezenet
+IMAGE_SIZES = [32, 64, 128, 224]
 
 def main():
     # Init device
@@ -35,44 +35,46 @@ def main():
     df = pd.read_csv('./data/train.csv')
     df, label_encoder = utility.encode_labels(df)
     num_classes = len(df['label'].value_counts())
+    np.save('./data/label_encoder_classes.npy', label_encoder.classes_)
     
     # Generate the ZCA matrix if enabled
-    if APPLY_ZCA_TRANS:
-        print("Making ZCA matrix ...")
-        data_loader = dl.get_full_data_loader(df, data_dir=DATA_DIR,
-                                              batch_size=BATCH_SIZE,
-                                              image_size=IMAGE_SIZE)
-        train_dataset_arr = next(iter(data_loader))[0].numpy()
-        zca = utility.ZCA()
-        zca.fit(train_dataset_arr)
-        zca_dic = {"zca_matrix": zca.ZCA_mat, "zca_mean": zca.mean}
-        savemat("./data/zca_data.mat", zca_dic)
-        print("Completed making ZCA matrix")
-    
-    # Define normalization
-    normalize = transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225],
-    )
-    
-    # Define transforms
-    train_transform = transforms.Compose([
-            utility.AddPadding(),
-            transforms.Resize((IMAGE_SIZE,IMAGE_SIZE)),
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.RandomRotation(degrees=(-90, 90)),
-            transforms.RandomVerticalFlip(p=0.5),
-            transforms.ColorJitter(.4,.4,.4),
-            transforms.ToTensor(),
-            normalize,
-            #transforms.RandomApply([utility.AddGaussianNoise(0., 1.)], p=0.5)
+    for image_size in IMAGE_SIZES:
+        if APPLY_ZCA_TRANS:
+            print("Making ZCA matrix ...")
+            data_loader = dl.get_full_data_loader(df, data_dir=DATA_DIR,
+                                                batch_size=BATCH_SIZE,
+                                                image_size=image_size)
+            train_dataset_arr = next(iter(data_loader))[0].numpy()
+            zca = utility.ZCA()
+            zca.fit(train_dataset_arr)
+            zca_dic = {"zca_matrix": zca.ZCA_mat, "zca_mean": zca.mean}
+            savemat("./data/zca_data.mat", zca_dic)
+            print("Completed making ZCA matrix")
+
+        # Define normalization
+        normalize = transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225],
+        )
+
+        # Define specific transforms
+        train_transform = transforms.Compose([
+                utility.AddPadding(),
+                transforms.Resize((image_size,image_size)),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomRotation(degrees=(-90, 90)),
+                transforms.RandomVerticalFlip(p=0.5),
+                transforms.ColorJitter(.4,.4,.4),
+                transforms.ToTensor(),
+                normalize,
+                #transforms.RandomApply([utility.AddGaussianNoise(0., 1.)], p=0.5)
+            ])
+        valid_transform = transforms.Compose([
+                utility.AddPadding(),
+                transforms.Resize((image_size,image_size)),
+                transforms.ToTensor(),
+                normalize,
         ])
-    valid_transform = transforms.Compose([
-            utility.AddPadding(),
-            transforms.Resize((IMAGE_SIZE,IMAGE_SIZE)),
-            transforms.ToTensor(),
-            normalize,
-    ])
     
     # Create a train and valid dataset
     train_dataset = dl.HotelImagesDataset(df, root_dir=DATA_DIR,
@@ -117,7 +119,8 @@ def main():
                                             epochs=EPOCHS,
                                             apply_zca_trans=APPLY_ZCA_TRANS)
     
-        utility.save_current_model(trained_model, f"./models/model_{net_type}.pt")
+        utility.save_current_model(trained_model,
+                                   f"./models/model_{net_type}_{str(image_size)}.pt")
                     
 if __name__ == "__main__":
     main()
