@@ -25,15 +25,15 @@ ANNEAL_STRAT = "cos"
 IMAGE_SIZE = 32
 FEATURE_EXTRACT = True
 APPLY_ZCA_TRANS = False
-RESNET_TYPE = "resnet18"
 DATA_DIR = 'data/train_images'
+NETS = ['resnet18', 'resnext', 'vgg', 'squeezenet', 'densenet']
 
 def main():
     # Init device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Load the meta data file
-    df = pd.read_csv('data/train.csv',)
+    df = pd.read_csv('./data/train.csv',)
     df, label_encoder = utility.encode_labels(df)
     num_classes = len(df['label'].value_counts())
     
@@ -46,7 +46,7 @@ def main():
         zca = utility.ZCA()
         zca.fit(train_dataset_arr)
         zca_dic = {"zca_matrix": zca.ZCA_mat, "zca_mean": zca.mean}
-        savemat("data/zca_data.mat", zca_dic)
+        savemat("./data/zca_data.mat", zca_dic)
     
     # Define normalization
     normalize = transforms.Normalize(
@@ -73,26 +73,17 @@ def main():
             normalize,
     ])
     
+    # Create a train and valid dataset
     train_dataset = dl.HotelImagesDataset(df, root_dir=DATA_DIR,
                                           transform=train_transform)
     valid_dataset = dl.HotelImagesDataset(df, root_dir=DATA_DIR,
                                           transform=valid_transform)
             
-    # Build dataset
+    # Get a train and valid data loader
     train_loader, valid_loader = dl.get_train_valid_loader(train_dataset,
                                                            valid_dataset,
                                                            batch_size=BATCH_SIZE,
                                                            random_seed=0)
-
-    # Make model based on ResNet
-    model = utility.initialize_resnet(num_classes, RESNET_TYPE,
-                                      feature_extract=FEATURE_EXTRACT)
-    
-    # Gather the parameters to be optimized/updated in this run.
-    params_to_update = utility.get_model_params_to_train(model, FEATURE_EXTRACT)
-    
-    # Send model to GPU
-    model = model.to(device)
     
     # Count number of labels in data
     values = df['label'].value_counts(dropna=False).keys().tolist()
@@ -104,29 +95,41 @@ def main():
     for lbl_class in train_dataset.classes:
         sample_count.append(value_dict[lbl_class])
     
-    # Make a weighted CrossEntropyLoss func
-    weight = 1 / torch.Tensor(sample_count)
-    normedWeights = torch.FloatTensor(weight).to(device)
-    criterion = nn.CrossEntropyLoss(weight=normedWeights)
+    for net_type in NETS: # train for every net
+        model = utility.initialize_net(num_classes, net_type,
+                                       feature_extract=FEATURE_EXTRACT)
     
-    # Make optimizer + scheduler
-    optimizer = optim.SGD(params_to_update, lr=LR)
-    scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer,
-                                              max_lr=100, epochs=EPOCHS,
-                                              anneal_strategy=ANNEAL_STRAT,
-                                              steps_per_epoch=len(train_loader))
+        # Gather the parameters to be optimized/updated in this run.
+        params_to_update = utility.get_model_params_to_train(model, FEATURE_EXTRACT)
+    
+        # Send model to GPU
+        model = model.to(device)
 
-    trained_model = trainer.train_model(device=device,
-                                        model=model,
-                                        optimizer=optimizer,
-                                        criterion=criterion,
-                                        train_loader=train_loader,
-                                        valid_loader=valid_loader,
-                                        scheduler=scheduler,
-                                        epochs=EPOCHS,
-                                        apply_zca_trans=APPLY_ZCA_TRANS)
+        # Make a weighted CrossEntropyLoss func
+        weight = 1 / torch.Tensor(sample_count)
+        normedWeights = torch.FloatTensor(weight).to(device)
+        #criterion = nn.CrossEntropyLoss(weight=normedWeights)
+        criterion = nn.CrossEntropyLoss()
+        
+        # Make optimizer + scheduler
+        optimizer = optim.SGD(params_to_update, lr=LR)
+        scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer,
+                                                max_lr=100, epochs=EPOCHS,
+                                                anneal_strategy=ANNEAL_STRAT,
+                                                steps_per_epoch=len(train_loader))
+
+        trained_model = trainer.train_model(device=device,
+                                            model=model,
+                                            optimizer=optimizer,
+                                            criterion=criterion,
+                                            train_loader=train_loader,
+                                            valid_loader=valid_loader,
+                                            net_type=net_type,
+                                            scheduler=scheduler,
+                                            epochs=EPOCHS,
+                                            apply_zca_trans=APPLY_ZCA_TRANS)
     
-    utility.save_current_model(trained_model, f"models/model_{RESNET_TYPE}.pt")
-            
+        utility.save_current_model(trained_model, f"./models/model_{net_type}.pt")
+                    
 if __name__ == "__main__":
     main()

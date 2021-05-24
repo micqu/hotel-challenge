@@ -7,6 +7,55 @@ from sklearn.preprocessing import LabelEncoder
 from torchvision.transforms.functional import pad
 from scipy import linalg
 
+class EarlyStopping:
+    """Early stops the training if validation loss doesn't improve after a given patience."""
+    def __init__(self, patience=7, verbose=False, delta=0, path='checkpoint.pt', trace_func=print):
+        """
+        Args:
+            patience (int): How long to wait after last time validation loss improved.
+                            Default: 7
+            verbose (bool): If True, prints a message for each validation loss improvement. 
+                            Default: False
+            delta (float): Minimum change in the monitored quantity to qualify as an improvement.
+                            Default: 0
+            path (str): Path for the checkpoint to be saved to.
+                            Default: 'checkpoint.pt'
+            trace_func (function): trace print function.
+                            Default: print            
+        """
+        self.patience = patience
+        self.verbose = verbose
+        self.counter = 0
+        self.best_score = None
+        self.early_stop = False
+        self.val_loss_min = np.Inf
+        self.delta = delta
+        self.path = path
+        self.trace_func = trace_func
+    def __call__(self, val_loss, model):
+
+        score = -val_loss
+
+        if self.best_score is None:
+            self.best_score = score
+            self.save_checkpoint(val_loss, model)
+        elif score < self.best_score + self.delta:
+            self.counter += 1
+            self.trace_func(f'EarlyStopping counter: {self.counter} out of {self.patience}')
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_score = score
+            self.save_checkpoint(val_loss, model)
+            self.counter = 0
+
+    def save_checkpoint(self, val_loss, model):
+        '''Saves model when validation loss decrease.'''
+        if self.verbose:
+            self.trace_func(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+        torch.save(model.state_dict(), self.path)
+        self.val_loss_min = val_loss
+
 def save_check_point(model, epoch, train_loader, optimizer,
                      scheduler=None, path=None, name='model.pt'):
     classes = train_loader.dataset.classes
@@ -178,26 +227,49 @@ def encode_labels(df):
     df = df.drop(['hotel_id'], axis=1)
     return df, le
 
-def initialize_resnet(num_classes, resnet_type,
-                      feature_extract, use_pretrained=True):
-    if resnet_type=='resnet18':
+def initialize_net(num_classes, net_type,
+                   feature_extract, use_pretrained=True):
+    if net_type=='resnet18':
         model_ft = torchvision.models.resnet18(pretrained=use_pretrained)
-    elif resnet_type=='resnet34':
-        model_ft = torchvision.models.resnet34(pretrained=use_pretrained)
-    elif resnet_type=='resnet50':
-        model_ft = torchvision.models.resnet50(pretrained=use_pretrained)
-    elif resnet_type=='resnext':
+        set_parameter_requires_grad(model_ft, feature_extract)
+        num_ftrs = model_ft.fc.in_features
+        model_ft.fc = torch.nn.Sequential(
+            torch.nn.Dropout(0.2),
+            torch.nn.Linear(num_ftrs, num_classes))
+    elif net_type=='resnext':
         model_ft = torchvision.models.resnext50_32x4d(pretrained=use_pretrained)
-     
-    if feature_extract:
-        for param in model_ft.parameters():
-            param.requires_grad = False
-            
-    num_ftrs = model_ft.fc.in_features
-    model_ft.fc = torch.nn.Sequential(
-        torch.nn.Dropout(0.2),
-        torch.nn.Linear(num_ftrs, num_classes))
+        set_parameter_requires_grad(model_ft, feature_extract)
+        num_ftrs = model_ft.fc.in_features
+        model_ft.fc = torch.nn.Sequential(
+            torch.nn.Dropout(0.2),
+            torch.nn.Linear(num_ftrs, num_classes))
+    elif net_type=='vgg':
+        model_ft = torchvision.models.vgg11_bn(pretrained=use_pretrained)
+        set_parameter_requires_grad(model_ft, feature_extract)
+        num_ftrs = model_ft.classifier[6].in_features
+        model_ft.classifier[6] = torch.nn.Sequential(
+            torch.nn.Dropout(0.2),
+            torch.nn.Linear(num_ftrs, num_classes))
+    elif net_type=='squeezenet':
+        model_ft = torchvision.models.squeezenet1_0(pretrained=use_pretrained)
+        set_parameter_requires_grad(model_ft, feature_extract)
+        model_ft.classifier[1] = torch.nn.Sequential(
+            torch.nn.Dropout(0.2),
+            torch.nn.Conv2d(512, num_classes, kernel_size=(1,1), stride=(1,1)))
+        model_ft.num_classes = num_classes
+    elif net_type == "densenet":
+        model_ft = torchvision.models.densenet121(pretrained=use_pretrained)
+        set_parameter_requires_grad(model_ft, feature_extract)
+        num_ftrs = model_ft.classifier.in_features
+        model_ft.classifier = torch.nn.Sequential(
+            torch.nn.Dropout(0.2),
+            torch.nn.Linear(num_ftrs, num_classes))
     return model_ft
+
+def set_parameter_requires_grad(model, feature_extracting):
+    if feature_extracting:
+        for param in model.parameters():
+            param.requires_grad = False
 
 def calculate_map(outputs, labels):
     top_k = torch.topk(outputs, 5)
