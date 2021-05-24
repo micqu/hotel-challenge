@@ -29,7 +29,7 @@ def find_lr():
     )
     
     # Make resnet
-    model = utility.initialize_resnet(n_classes, 'resnet18',
+    model = utility.initialize_net(n_classes, 'resnet18',
                                       feature_extract=USE_FEATURE_EXTRACT)
     model = model.to(device)
     

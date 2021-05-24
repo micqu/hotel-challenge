@@ -1,3 +1,4 @@
+from os import path
 import torch
 import utility
 import wandb
@@ -8,7 +9,7 @@ import numpy as np
 from scipy import linalg
 from scipy import io
 
-def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
+def train_model(device, model, optimizer, criterion, train_loader, valid_loader, net_type,
                 scheduler, epochs, send_to_wandb: bool = False, apply_zca_trans: bool = False):
 
     best_model_wts = copy.deepcopy(model.state_dict())
@@ -22,7 +23,12 @@ def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
         transformation_mean = torch.from_numpy(zca_data['zca_mean'][0]).float()
         zca = utility.ZCATransformation(transformation_matrix, transformation_mean)
     
+    # Use EarlyStopping
+    early_stopping = utility.EarlyStopping(patience=5, verbose=True,
+                                           path=f'./checkpoints/checkpoint_{net_type}.pt')
+    
     # Run train loop
+    print(f"Now training {net_type} ...")    
     for epoch in range(1, epochs + 1):
         model.train()
         train_loss = 0.0
@@ -87,7 +93,14 @@ def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
         time_taken = time.time() - since         
         print_status_bar(epoch, epochs, train_loss, train_map,
                          valid_loss, valid_map, time_taken)
-    
+        
+        # check if we can stop training
+        early_stopping(valid_loss, model)
+        if early_stopping.early_stop:
+            print("Early stopping activated, stopping ...")
+            break
+        
+    print(f"Completed training {net_type}")
     model.load_state_dict(best_model_wts)
     return model
 

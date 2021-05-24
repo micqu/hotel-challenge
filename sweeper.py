@@ -49,7 +49,7 @@ def train_model():
     )
     
     # Make resnet
-    model = utility.initialize_resnet(num_classes, config.resnet_type, config.use_feature_extract)
+    model = utility.initialize_net(num_classes, config.resnet_type, config.use_feature_extract)
     model = model.to(device)
     
     # Gather the parameters to be optimized/updated in this run.
