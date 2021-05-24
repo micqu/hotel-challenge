@@ -17,9 +17,9 @@ from scipy.io import savemat
 from sklearn.model_selection import train_test_split
 from torchvision import transforms
 
-BATCH_SIZE = 8
+BATCH_SIZE = 32
 EPOCHS = 100
-LR = 1e-3
+LR = 0.04
 ANNEAL_STRAT = "cos"
 IMAGE_SIZE = 64
 FEATURE_EXTRACT = True
@@ -98,7 +98,7 @@ def main():
         criterion = nn.CrossEntropyLoss()
         
         # Make optimizer + scheduler
-        optimizer = optim.SGD(params_to_update, lr=LR)
+        optimizer = optim.Adam(params_to_update, lr=LR)
         scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer,
                                                 max_lr=10, epochs=EPOCHS,
                                                 anneal_strategy=ANNEAL_STRAT,

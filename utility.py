@@ -271,12 +271,6 @@ def set_parameter_requires_grad(model, feature_extracting):
         for param in model.parameters():
             param.requires_grad = False
 
-def calculate_map(outputs, labels):
-    top_k = torch.topk(outputs, 5)
-    preds = top_k.indices.detach().cpu().numpy()
-    corrects = labels.detach().cpu().numpy()
-    return ml_metrics.mapk([[x] for x in corrects], preds, k=5)
-
 def get_model_params_to_train(model, use_feature_extract):
     params_to_update = model.parameters()
     if use_feature_extract:

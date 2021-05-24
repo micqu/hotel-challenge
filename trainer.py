@@ -32,7 +32,6 @@ def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
     for epoch in range(1, epochs+1):
         model.train()
         train_loss = 0.0
-        train_map = 0.0
         for _, (inputs, labels) in tqdm(enumerate(train_loader)):  
             if apply_zca_trans:
                 inputs = zca(inputs) # apply ZCA transformation
@@ -51,11 +50,9 @@ def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
                 optimizer.step()
             
             train_loss += loss.item() * inputs.size(0)
-            train_map += utility.calculate_map(outputs, labels)
             
         model.eval()
         valid_loss = 0.0
-        valid_map = 0.0
         for _, (inputs, labels) in tqdm(enumerate(valid_loader)):
             with torch.no_grad():
                 if apply_zca_trans:
@@ -68,12 +65,9 @@ def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
                 loss = criterion(outputs, labels)
             
             valid_loss += loss.item() * inputs.size(0)
-            valid_map += utility.calculate_map(outputs, labels)
 
         train_loss /= len(train_loader.dataset)
-        train_map /= len(train_loader.dataset)
         valid_loss /= len(valid_loader.dataset)
-        valid_map /= len(valid_loader.dataset)
         
         if scheduler is not None:
             scheduler.step()  # step up scheduler
@@ -85,14 +79,11 @@ def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
         
         if send_to_wandb:     
             wandb.log({"train_loss": train_loss,
-                       "train_map": train_map,
                        "epoch": epoch,
-                       "valid_loss": valid_loss,
-                       "valid_map": valid_map})
+                       "valid_loss": valid_loss})
         
         time_taken = time.time() - since         
-        print_status_bar(epoch, epochs, train_loss, train_map,
-                         valid_loss, valid_map, time_taken)
+        print_status_bar(epoch, epochs, train_loss, valid_loss, time_taken)
         
         # check if we can stop training
         early_stopping(valid_loss, model)
@@ -104,12 +95,9 @@ def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
     model.load_state_dict(best_model_wts)
     return model
 
-def print_status_bar(epoch, total_epoch, train_loss, train_map,
-                     valid_loss, valid_map, time_taken):
+def print_status_bar(epoch, total_epoch, train_loss, valid_loss, time_taken):
     time_taken_min = str(datetime.timedelta(seconds=round(time_taken)))
     print(f"At epoch: {epoch}/{total_epoch}" +
         f" - train loss: {train_loss:.4f}" +
-        f" - train map: {train_map:.4f}" +
         f" - valid loss: {valid_loss:.4f}" +
-        f" - valid map: {valid_map:.4f}" +
         f" - time spent: {time_taken_min}")
