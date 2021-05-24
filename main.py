@@ -18,7 +18,7 @@ from sklearn.model_selection import train_test_split
 from torchvision import transforms
 
 PRINT_STATUS = True
-BATCH_SIZE = 16
+BATCH_SIZE = 8
 EPOCHS = 100
 LR = 1e-3
 ANNEAL_STRAT = "cos"
