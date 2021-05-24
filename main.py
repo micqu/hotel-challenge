@@ -17,16 +17,15 @@ from scipy.io import savemat
 from sklearn.model_selection import train_test_split
 from torchvision import transforms
 
-PRINT_STATUS = True
-BATCH_SIZE = 32
+BATCH_SIZE = 8
 EPOCHS = 100
 LR = 1e-3
 ANNEAL_STRAT = "cos"
-IMAGE_SIZE = 32
+IMAGE_SIZE = 224
 FEATURE_EXTRACT = False
 APPLY_ZCA_TRANS = True
 DATA_DIR = 'data/train_images'
-NETS = ['resnet18', 'resnext', 'vgg', 'squeezenet', 'densenet']
+NETS = ['vgg']
 
 def main():
     # Init device
@@ -56,7 +55,7 @@ def main():
     
     # Define transforms
     train_transform = transforms.Compose([
-            #utility.AddPadding(),
+            utility.AddPadding(),
             transforms.Resize((IMAGE_SIZE,IMAGE_SIZE)),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomRotation(degrees=(-90, 90)),
@@ -67,7 +66,7 @@ def main():
             #transforms.RandomApply([utility.AddGaussianNoise(0., 1.)], p=0.5)
         ])
     valid_transform = transforms.Compose([
-            #utility.AddPadding(),
+            utility.AddPadding(),
             transforms.Resize((IMAGE_SIZE,IMAGE_SIZE)),
             transforms.ToTensor(),
             normalize,
@@ -101,7 +100,7 @@ def main():
         # Make optimizer + scheduler
         optimizer = optim.SGD(params_to_update, lr=LR)
         scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer,
-                                                max_lr=100, epochs=EPOCHS,
+                                                max_lr=10, epochs=EPOCHS,
                                                 anneal_strategy=ANNEAL_STRAT,
                                                 steps_per_epoch=len(train_loader))
 
