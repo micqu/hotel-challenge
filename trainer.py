@@ -56,7 +56,7 @@ def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
         model.eval()
         valid_loss = 0.0
         valid_map = 0.0
-        for inputs, labels in valid_loader:
+        for _, (inputs, labels) in tqdm(enumerate(valid_loader)):  
             with torch.no_grad():
                 if apply_zca_trans:
                     inputs = zca(inputs) # apply ZCA transformation
