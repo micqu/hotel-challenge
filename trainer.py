@@ -9,11 +9,10 @@ from scipy import linalg
 from scipy import io
 
 def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
-                scheduler, epochs, send_to_wandb: bool = False, print_status: bool = False,
-                apply_zca_trans: bool = False):
+                scheduler, epochs, send_to_wandb: bool = False, apply_zca_trans: bool = False):
 
     best_model_wts = copy.deepcopy(model.state_dict())
-    best_valid_map = 0.0
+    valid_loss_min = np.Inf
     since = time.time()
     
     # Apply ZCA if enabled
@@ -44,7 +43,6 @@ def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
                 loss = criterion(outputs, labels)
                 loss.backward()
                 optimizer.step()
-                scheduler.step()
             
             train_loss += loss.item() * inputs.size(0)
             train_map += utility.calculate_map(outputs, labels)
@@ -70,23 +68,25 @@ def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
         train_map /= len(train_loader.dataset)
         valid_loss /= len(valid_loader.dataset)
         valid_map /= len(valid_loader.dataset)
-            
-        # deep copy the model
-        if valid_map > best_valid_map:
-            best_valid_map = valid_map
+        
+        if scheduler is not None:
+            scheduler.step()  # step up scheduler
+
+        # deep copy the model if improved
+        if valid_loss <= valid_loss_min:
+            valid_loss_min = valid_loss
             best_model_wts = copy.deepcopy(model.state_dict())
         
         if send_to_wandb:     
             wandb.log({"train_loss": train_loss,
-                    "train_map": train_map,
-                    "epoch": epoch,
-                    "valid_loss": valid_loss,
-                    "valid_map": valid_map})
+                       "train_map": train_map,
+                       "epoch": epoch,
+                       "valid_loss": valid_loss,
+                       "valid_map": valid_map})
         
         time_taken = time.time() - since         
-        if print_status:
-            print_status_bar(epoch, epochs, train_loss, train_map,
-                             valid_loss, valid_map, time_taken)
+        print_status_bar(epoch, epochs, train_loss, train_map,
+                         valid_loss, valid_map, time_taken)
     
     model.load_state_dict(best_model_wts)
     return model

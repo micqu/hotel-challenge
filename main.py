@@ -19,7 +19,7 @@ from torchvision import transforms
 
 PRINT_STATUS = True
 BATCH_SIZE = 32
-EPOCHS = 20
+EPOCHS = 100
 LR = 1e-3
 ANNEAL_STRAT = "cos"
 IMAGE_SIZE = 32
@@ -34,15 +34,14 @@ def main():
     
     # Load the meta data file
     df = pd.read_csv('data/train.csv',)
-    df = df.drop(['timestamp'], axis=1)
     df, label_encoder = utility.encode_labels(df)
     num_classes = len(df['label'].value_counts())
     
     # Generate the ZCA matrix if enabled
     if APPLY_ZCA_TRANS:
         data_loader = dl.get_full_data_loader(df, data_dir=DATA_DIR,
-                                            batch_size=BATCH_SIZE,
-                                            image_size=IMAGE_SIZE)
+                                              batch_size=BATCH_SIZE,
+                                              image_size=IMAGE_SIZE)
         train_dataset_arr = next(iter(data_loader))[0].numpy()
         zca = utility.ZCA()
         zca.fit(train_dataset_arr)
@@ -59,8 +58,13 @@ def main():
     train_transform = transforms.Compose([
             utility.AddPadding(),
             transforms.Resize((IMAGE_SIZE,IMAGE_SIZE)),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomRotation(degrees=(-90, 90)),
+            transforms.RandomVerticalFlip(p=0.5),
+            transforms.ColorJitter(.4,.4,.4),
             transforms.ToTensor(),
             normalize,
+            transforms.RandomApply([utility.AddGaussianNoise(0., 1.)], p=0.5)
         ])
     valid_transform = transforms.Compose([
             utility.AddPadding(),
@@ -108,9 +112,9 @@ def main():
     # Make optimizer + scheduler
     optimizer = optim.SGD(params_to_update, lr=LR)
     scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer,
-                                        max_lr=10, epochs=EPOCHS,
-                                        anneal_strategy=ANNEAL_STRAT,
-                                        steps_per_epoch=len(train_loader))
+                                              max_lr=100, epochs=EPOCHS,
+                                              anneal_strategy=ANNEAL_STRAT,
+                                              steps_per_epoch=len(train_loader))
 
     trained_model = trainer.train_model(device=device,
                                         model=model,
@@ -120,8 +124,9 @@ def main():
                                         valid_loader=valid_loader,
                                         scheduler=scheduler,
                                         epochs=EPOCHS,
-                                        print_status=PRINT_STATUS,
                                         apply_zca_trans=APPLY_ZCA_TRANS)
+    
+    utility.save_current_model(trained_model, f"models/model_{RESNET_TYPE}.pt")
             
 if __name__ == "__main__":
     main()

@@ -7,6 +7,60 @@ from sklearn.preprocessing import LabelEncoder
 from torchvision.transforms.functional import pad
 from scipy import linalg
 
+def save_check_point(model, epoch, train_loader, optimizer,
+                     scheduler=None, path=None, name='model.pt'):
+    classes = train_loader.dataset.classes
+
+    try:
+        classifier = model.classifier
+    except AttributeError:
+        classifier = model.fc
+
+    checkpoint = {
+        'classes': classes,
+        'epochs': epoch,
+        'classifier': classifier,
+        'state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict()
+    }
+
+    if scheduler is not None:
+        checkpoint['scheduler_state_dict'] = scheduler.state_dict()
+
+    if path is None:
+        d = model
+    else:
+        d = path + "/" + name
+
+    torch.save(checkpoint, d)
+    print(f"Model saved at {d}")
+
+def load_latest_model(model, name="model.pt"):
+    model.load_state_dict(torch.load(name))
+    return model
+
+def save_current_model(model, name='model.pt'):
+    torch.save(model.state_dict(), name)
+
+class Lighting(object):
+    """Lighting noise(AlexNet - style PCA - based noise)"""
+
+    def __init__(self, alphastd, eigval, eigvec):
+        self.alphastd = alphastd
+        self.eigval = eigval
+        self.eigvec = eigvec
+
+    def __call__(self, img):
+        if self.alphastd == 0:
+            return img
+
+        alpha = img.new().resize_(3).normal_(0, self.alphastd)
+        rgb = self.eigvec.type_as(img).clone()\
+            .mul(alpha.view(1, 3).expand(3, 3))\
+            .mul(self.eigval.view(1, 3).expand(3, 3))\
+            .sum(1).squeeze()
+        return img.add(rgb.view(3, 1, 1).expand_as(img))
+
 class ZCA(object):
     def __init__(self, regularization=1e-5, x=None):
         self.regularization = regularization
@@ -141,7 +195,7 @@ def initialize_resnet(num_classes, resnet_type,
             
     num_ftrs = model_ft.fc.in_features
     model_ft.fc = torch.nn.Sequential(
-        torch.nn.Dropout(0.20),
+        torch.nn.Dropout(0.2),
         torch.nn.Linear(num_ftrs, num_classes))
     return model_ft
 

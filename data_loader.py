@@ -61,9 +61,9 @@ def get_full_data_loader(df, data_dir, batch_size, image_size,
             normalize
     ])
     full_dataset = HotelImagesDataset(df, root_dir=data_dir, transform=transform)
-    full_loader = torch.utils.data.DataLoader(full_dataset, batch_size=batch_size,
-                                              num_workers=num_workers, pin_memory=pin_memory)
-    return full_loader
+    full_data_loader = torch.utils.data.DataLoader(full_dataset, batch_size=batch_size,
+                                                   num_workers=num_workers, pin_memory=pin_memory)
+    return full_data_loader
 
 def get_train_valid_loader(train_dataset,
                            valid_dataset,
@@ -71,6 +71,7 @@ def get_train_valid_loader(train_dataset,
                            random_seed: int,
                            train_size: float = 0.7,
                            num_workers=4,
+                           shuffle=True,
                            pin_memory=True):            
     num_train = len(train_dataset)
     indices = list(range(num_train))
