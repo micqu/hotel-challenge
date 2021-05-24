@@ -18,11 +18,11 @@ from sklearn.model_selection import train_test_split
 from torchvision import transforms
 
 PRINT_STATUS = True
-BATCH_SIZE = 128
+BATCH_SIZE = 512
 EPOCHS = 100
 LR = 1e-3
 ANNEAL_STRAT = "cos"
-IMAGE_SIZE = 16
+IMAGE_SIZE = 32
 FEATURE_EXTRACT = True
 APPLY_ZCA_TRANS = True
 DATA_DIR = 'data/train_images'

@@ -6,7 +6,6 @@ import copy
 import time
 import datetime
 import numpy as np
-from scipy import linalg
 from scipy import io
 from tqdm import tqdm
 
@@ -30,11 +29,11 @@ def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
     
     # Run train loop
     print(f"Now training {net_type} ...")    
-    for epoch in tqdm(range(1, epochs+1)):
+    for epoch in range(1, epochs+1):
         model.train()
         train_loss = 0.0
         train_map = 0.0
-        for inputs, labels in train_loader:   
+        for _, (inputs, labels) in tqdm(enumerate(train_loader)):  
             if apply_zca_trans:
                 inputs = zca(inputs) # apply ZCA transformation
             
