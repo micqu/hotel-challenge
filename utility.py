@@ -228,7 +228,7 @@ def encode_labels(df):
     return df, le
 
 def initialize_net(num_classes, net_type,
-                   feature_extract, use_pretrained=True):
+                   feature_extract, use_pretrained=False):
     if net_type=='resnet18':
         model_ft = torchvision.models.resnet18(pretrained=use_pretrained)
         set_parameter_requires_grad(model_ft, feature_extract)

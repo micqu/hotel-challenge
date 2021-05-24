@@ -17,15 +17,15 @@ from scipy.io import savemat
 from sklearn.model_selection import train_test_split
 from torchvision import transforms
 
-BATCH_SIZE = 32
+BATCH_SIZE = 128
 EPOCHS = 100
-LR = 0.04
+LR = 0.01
 ANNEAL_STRAT = "cos"
-IMAGE_SIZE = 32
+IMAGE_SIZE = 64
 FEATURE_EXTRACT = True
 APPLY_ZCA_TRANS = True
 DATA_DIR = 'data/train_images'
-NETS = ['squeezenet']
+NETS = ['resnext'] # train on resnext, no pretraining
 
 def main():
     # Init device
@@ -38,6 +38,7 @@ def main():
     
     # Generate the ZCA matrix if enabled
     if APPLY_ZCA_TRANS:
+        print("Making ZCA matrix ...")
         data_loader = dl.get_full_data_loader(df, data_dir=DATA_DIR,
                                               batch_size=BATCH_SIZE,
                                               image_size=IMAGE_SIZE)
@@ -46,6 +47,7 @@ def main():
         zca.fit(train_dataset_arr)
         zca_dic = {"zca_matrix": zca.ZCA_mat, "zca_mean": zca.mean}
         savemat("./data/zca_data.mat", zca_dic)
+        print("Completed making ZCA matrix")
     
     # Define normalization
     normalize = transforms.Normalize(
