@@ -21,11 +21,11 @@ BATCH_SIZE = 8
 EPOCHS = 100
 LR = 1e-3
 ANNEAL_STRAT = "cos"
-IMAGE_SIZE = 224
-FEATURE_EXTRACT = False
-APPLY_ZCA_TRANS = False
+IMAGE_SIZE = 64
+FEATURE_EXTRACT = True
+APPLY_ZCA_TRANS = True
 DATA_DIR = 'data/train_images'
-NETS = ['vgg']
+NETS = ['squeezenet']
 
 def main():
     # Init device
