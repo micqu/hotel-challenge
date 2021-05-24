@@ -22,9 +22,9 @@ BATCH_SIZE = 128
 EPOCHS = 100
 LR = 1e-3
 ANNEAL_STRAT = "cos"
-IMAGE_SIZE = 32
+IMAGE_SIZE = 16
 FEATURE_EXTRACT = True
-APPLY_ZCA_TRANS = False
+APPLY_ZCA_TRANS = True
 DATA_DIR = 'data/train_images'
 NETS = ['resnet18', 'resnext', 'vgg', 'squeezenet', 'densenet']
 
