@@ -69,7 +69,7 @@ def get_train_valid_loader(train_dataset,
                            valid_dataset,
                            batch_size: int,
                            random_seed: int,
-                           train_size: float = 0.7,
+                           train_size: float = 0.8,
                            num_workers=4,
                            shuffle=True,
                            pin_memory=True):            
