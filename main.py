@@ -16,6 +16,8 @@ Image.MAX_IMAGE_PIXELS = None
 from scipy.io import savemat
 from sklearn.model_selection import train_test_split
 from torchvision import transforms
+import os.path
+from os import path
 
 BATCH_SIZE = 32
 EPOCHS = 100
@@ -25,7 +27,7 @@ FEATURE_EXTRACT = True
 APPLY_ZCA_TRANS = True
 DATA_DIR = 'data/train_images'
 NETS = ['squeezenet'] # train on squeezenet
-IMAGE_SIZES = [32, 64, 128, 224]
+IMAGE_SIZES = [32, 64, 128]
 
 def main():
     # Init device
@@ -36,9 +38,9 @@ def main():
     df, label_encoder = utility.encode_labels(df)
     num_classes = len(df['label'].value_counts())
     np.save('./data/label_encoder_classes.npy', label_encoder.classes_)
-    
+        
     # Generate the ZCA matrix if enabled
-    for image_size in IMAGE_SIZES:
+    for image_size in IMAGE_SIZES: # train for every res
         if APPLY_ZCA_TRANS:
             print("Making ZCA matrix ...")
             data_loader = dl.get_full_data_loader(df, data_dir=DATA_DIR,
@@ -66,61 +68,64 @@ def main():
                 transforms.RandomVerticalFlip(p=0.5),
                 transforms.ColorJitter(.4,.4,.4),
                 transforms.ToTensor(),
-                normalize,
-                #transforms.RandomApply([utility.AddGaussianNoise(0., 1.)], p=0.5)
+                normalize
             ])
         valid_transform = transforms.Compose([
                 utility.AddPadding(),
                 transforms.Resize((image_size,image_size)),
                 transforms.ToTensor(),
-                normalize,
+                normalize
         ])
     
-    # Create a train and valid dataset
-    train_dataset = dl.HotelImagesDataset(df, root_dir=DATA_DIR,
-                                          transform=train_transform)
-    valid_dataset = dl.HotelImagesDataset(df, root_dir=DATA_DIR,
-                                          transform=valid_transform)
+        # Create a train and valid dataset
+        train_dataset = dl.HotelImagesDataset(df, root_dir=DATA_DIR,
+                                            transform=train_transform)
+        valid_dataset = dl.HotelImagesDataset(df, root_dir=DATA_DIR,
+                                            transform=valid_transform)
             
-    # Get a train and valid data loader
-    train_loader, valid_loader = dl.get_train_valid_loader(train_dataset,
-                                                           valid_dataset,
-                                                           batch_size=BATCH_SIZE,
-                                                           random_seed=0)
+        # Get a train and valid data loader
+        train_loader, valid_loader = dl.get_train_valid_loader(train_dataset,
+                                                            valid_dataset,
+                                                            batch_size=BATCH_SIZE,
+                                                            random_seed=0)
+        for net_type in NETS: # train for every net
+            model = utility.initialize_net(num_classes, net_type,
+                                           feature_extract=FEATURE_EXTRACT)
+            
+            # If old model exists, take state from it
+            if path.exists(f"./models/model_{net_type}.pt"):
+                print("Resuming training on trained model ...")
+                model = utility.load_latest_model(model, f'./models/model_{net_type}.pt')
+                
+            # Gather the parameters to be optimized/updated in this run.
+            params_to_update = utility.get_model_params_to_train(model, FEATURE_EXTRACT)
         
-    for net_type in NETS: # train for every net
-        model = utility.initialize_net(num_classes, net_type,
-                                       feature_extract=FEATURE_EXTRACT)
-    
-        # Gather the parameters to be optimized/updated in this run.
-        params_to_update = utility.get_model_params_to_train(model, FEATURE_EXTRACT)
-    
-        # Send model to GPU
-        model = model.to(device)
+            # Send model to GPU
+            model = model.to(device)
 
-        # Make criterion
-        criterion = nn.CrossEntropyLoss()
+            # Make criterion
+            criterion = nn.CrossEntropyLoss()
+            
+            # Make optimizer + scheduler
+            optimizer = optim.Adam(params_to_update, lr=LR)
+            scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer,
+                                                    max_lr=10, epochs=EPOCHS,
+                                                    anneal_strategy=ANNEAL_STRAT,
+                                                    steps_per_epoch=len(train_loader))
+
+            trained_model = trainer.train_model(device=device,
+                                                model=model,
+                                                optimizer=optimizer,
+                                                criterion=criterion,
+                                                train_loader=train_loader,
+                                                valid_loader=valid_loader,
+                                                net_type=net_type,
+                                                scheduler=scheduler,
+                                                epochs=EPOCHS,
+                                                apply_zca_trans=APPLY_ZCA_TRANS)
         
-        # Make optimizer + scheduler
-        optimizer = optim.Adam(params_to_update, lr=LR)
-        scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer,
-                                                max_lr=10, epochs=EPOCHS,
-                                                anneal_strategy=ANNEAL_STRAT,
-                                                steps_per_epoch=len(train_loader))
-
-        trained_model = trainer.train_model(device=device,
-                                            model=model,
-                                            optimizer=optimizer,
-                                            criterion=criterion,
-                                            train_loader=train_loader,
-                                            valid_loader=valid_loader,
-                                            net_type=net_type,
-                                            scheduler=scheduler,
-                                            epochs=EPOCHS,
-                                            apply_zca_trans=APPLY_ZCA_TRANS)
-    
-        utility.save_current_model(trained_model,
-                                   f"./models/model_{net_type}_{str(image_size)}.pt")
+            utility.save_current_model(trained_model,
+                                    f"./models/model_{net_type}.pt")
                     
 if __name__ == "__main__":
     main()
