@@ -23,7 +23,7 @@ LR = 1e-3
 ANNEAL_STRAT = "cos"
 IMAGE_SIZE = 224
 FEATURE_EXTRACT = False
-APPLY_ZCA_TRANS = True
+APPLY_ZCA_TRANS = False
 DATA_DIR = 'data/train_images'
 NETS = ['vgg']
 
