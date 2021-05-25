@@ -26,8 +26,8 @@ ANNEAL_STRAT = "cos"
 FEATURE_EXTRACT = False
 APPLY_ZCA_TRANS = True
 DATA_DIR = 'data/train_images'
-NETS = ['squeezenet'] # train on squeezenet
-IMAGE_SIZES = [32, 64, 128, 224] # train for 4 resolutions
+NETS = ['resnext'] # train on resnext
+IMAGE_SIZES = [64, 128, 224] # train for 4 resolutions
 
 def main():
     # Init device
@@ -120,7 +120,6 @@ def main():
                                                 train_loader=train_loader,
                                                 valid_loader=valid_loader,
                                                 net_type=net_type,
-                                                scheduler=scheduler,
                                                 epochs=EPOCHS,
                                                 apply_zca_trans=APPLY_ZCA_TRANS)
         

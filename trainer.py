@@ -24,7 +24,7 @@ def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
         zca = utility.ZCATransformation(transformation_matrix, transformation_mean)
     
     # Use EarlyStopping
-    early_stopping = utility.EarlyStopping(patience=5, verbose=True, delta=0.01,
+    early_stopping = utility.EarlyStopping(patience=3, verbose=True, delta=0.01,
                                            path=f'./checkpoints/checkpoint_{net_type}.pt')
     
     # Run train loop
