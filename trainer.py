@@ -9,8 +9,8 @@ import numpy as np
 from scipy import io
 from tqdm import tqdm
 
-def train_model(device, model, optimizer, criterion, train_loader, valid_loader, net_type,
-                epochs, send_to_wandb: bool = False, apply_zca_trans: bool = False):
+def train_model(device, model, optimizer, criterion, train_loader, valid_loader, scheduler,
+                net_type, epochs, send_to_wandb: bool = False, apply_zca_trans: bool = False):
 
     best_model_wts = copy.deepcopy(model.state_dict())
     valid_loss_min = np.Inf
@@ -69,8 +69,8 @@ def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
         train_loss /= len(train_loader.dataset)
         valid_loss /= len(valid_loader.dataset)
         
-        #if scheduler is not None:
-            #scheduler.step()  # step up scheduler
+        if scheduler is not None:
+            scheduler.step(valid_loss) # step up scheduler
 
         # deep copy the model if improved
         if valid_loss <= valid_loss_min:

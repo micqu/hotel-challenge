@@ -30,9 +30,6 @@ NETS = ['resnext'] # train on resnext
 IMAGE_SIZES = [64, 128, 224] # train for 4 resolutions
 
 def main():
-    # Init device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
     # Load the meta data file
     df = pd.read_csv('./data/train.csv')
     df, label_encoder = utility.encode_labels(df)
@@ -101,17 +98,18 @@ def main():
             params_to_update = utility.get_model_params_to_train(model, FEATURE_EXTRACT)
         
             # Send model to GPU
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")            
             model = model.to(device)
 
             # Make criterion
             criterion = nn.CrossEntropyLoss()
             
             # Make optimizer + scheduler
-            optimizer = optim.Adam(params_to_update, lr=LR)
-            scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer,
-                                                    max_lr=10, epochs=EPOCHS,
-                                                    anneal_strategy=ANNEAL_STRAT,
-                                                    steps_per_epoch=len(train_loader))
+            optimizer = torch.optim.SGD(params_to_update, lr=0.01, momentum=0.9)
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer,
+                                                                   mode='min',
+                                                                   factor=0.01,
+                                                                   patience=3)
 
             trained_model = trainer.train_model(device=device,
                                                 model=model,
@@ -119,6 +117,7 @@ def main():
                                                 criterion=criterion,
                                                 train_loader=train_loader,
                                                 valid_loader=valid_loader,
+                                                scheduler=scheduler,
                                                 net_type=net_type,
                                                 epochs=EPOCHS,
                                                 apply_zca_trans=APPLY_ZCA_TRANS)
