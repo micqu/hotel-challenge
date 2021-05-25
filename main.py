@@ -21,13 +21,13 @@ from os import path
 
 BATCH_SIZE = 32
 EPOCHS = 100
-LR = 0.01
+LR = 0.001
 ANNEAL_STRAT = "cos"
-FEATURE_EXTRACT = True
+FEATURE_EXTRACT = False
 APPLY_ZCA_TRANS = True
 DATA_DIR = 'data/train_images'
 NETS = ['squeezenet'] # train on squeezenet
-IMAGE_SIZES = [64, 128]
+IMAGE_SIZES = [32, 64, 128, 224] # train for 4 resolutions
 
 def main():
     # Init device
