@@ -24,11 +24,11 @@ def train_model(device, model, optimizer, criterion, train_loader, valid_loader,
         zca = utility.ZCATransformation(transformation_matrix, transformation_mean)
     
     # Use EarlyStopping
-    early_stopping = utility.EarlyStopping(patience=5, verbose=True,
+    early_stopping = utility.EarlyStopping(patience=5, verbose=True, delta=0.01,
                                            path=f'./checkpoints/checkpoint_{net_type}.pt')
     
     # Run train loop
-    print(f"Now training {net_type} ...")    
+    print(f"Now training {net_type} ...")
     for epoch in range(1, epochs+1):
         model.train()
         train_loss = 0.0

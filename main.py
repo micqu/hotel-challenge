@@ -27,7 +27,7 @@ FEATURE_EXTRACT = True
 APPLY_ZCA_TRANS = True
 DATA_DIR = 'data/train_images'
 NETS = ['squeezenet'] # train on squeezenet
-IMAGE_SIZES = [32, 64, 128]
+IMAGE_SIZES = [64, 128]
 
 def main():
     # Init device
